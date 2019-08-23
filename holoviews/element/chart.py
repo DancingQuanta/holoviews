@@ -244,7 +244,7 @@ class Histogram(Chart):
             selected = super(Histogram, self).select(
                 selection_expr=selection_expr,
                 selection_specs=selection_specs,
-                **selection,
+                **selection
             )
 
             # Handle updating dataset
