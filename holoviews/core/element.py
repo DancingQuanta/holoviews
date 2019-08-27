@@ -28,6 +28,8 @@ class Element(ViewableElement, Composable, Overlayable):
 
     _selection_streams = ()
 
+    _selection_display_mode = None
+
     def _get_selection_expr_for_stream_value(self, **kwargs):
         return None, None
 
