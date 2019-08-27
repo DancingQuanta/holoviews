@@ -28,7 +28,7 @@ class ScatterPlot(ChartPlot, ColorbarPlot):
       Index of the dimension from which the color will the drawn""")
 
     style_opts = [
-        'marker', 'color', 'cmap', 'alpha', 'size', 'sizemin', 'selectedpoints'
+        'marker', 'color', 'cmap', 'alpha', 'opacity', 'size', 'sizemin', 'selectedpoints'
     ]
 
     _nonvectorized_styles = ['cmap', 'alpha', 'sizemin', 'selectedpoints']
@@ -287,7 +287,7 @@ class HistogramPlot(ElementPlot):
 
     trace_kwargs = {'type': 'bar'}
 
-    style_opts = ['color', 'line_color', 'line_width', 'opacity']
+    style_opts = ['color', 'line_color', 'line_width', 'opacity', 'selectedpoints']
 
     _style_key = 'marker'
 
