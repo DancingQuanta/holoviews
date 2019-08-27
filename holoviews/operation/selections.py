@@ -9,9 +9,8 @@ from ..core.options import Store
 class link_selections(param.ParameterizedFunction):
     selection_expr = param.Parameter(default=None)
     color = param.Color(default='#DC143C')  # crimson
-    unselected_color = param.Color(default='#B0C4DE')  # lightsteelblue
+    unselected_color = param.Color(default="#99a6b2")  # LightSlateGray - 65%
     selection_name = param.String(default=None, constant=True)
-    overwrite = param.Boolean(default=None)
 
     _instances = WeakValueDictionary()
 
@@ -54,12 +53,6 @@ class link_selections(param.ParameterizedFunction):
         self.selection_expr = None
 
     def __call__(self, hvobj):
-
-        # if self.overwrite is not None:
-        #     overwrite = self.overwrite
-        # else:
-        #     overwrite = self.name is None
-
         old_instance = link_selections._instances.get(self.selection_name, None)
         if old_instance is not None and old_instance is not self:
             old_instance.clear()
@@ -84,7 +77,7 @@ class link_selections(param.ParameterizedFunction):
 
         # Convert to DynamicMap
         dmap = Dynamic(hvobj,
-                       operation=_overlay_selection_fn,
+                       operation=_display_selection_fn,
                        streams=[self.param_stream])
 
         # Update dimension ranges
@@ -95,7 +88,18 @@ class link_selections(param.ParameterizedFunction):
         return dmap
 
 
-def _overlay_selection_fn(element, selection_expr, color, unselected_color, **_):
+def _display_selection_fn(element, **kwargs):
+    if element._selection_display_mode == 'overlay':
+        return _display_overlay_selection(element, **kwargs)
+    else:
+        return element
+
+
+def _display_overlay_selection(element, selection_expr, color, unselected_color, **kwargs):
+    """
+    Display a selection on an element by overlaying a subset of the element
+    on top of itself
+    """
     if Store.current_backend == 'bokeh':
         def alpha_opts(alpha):
             return dict(selection_alpha=alpha,
@@ -111,11 +115,22 @@ def _overlay_selection_fn(element, selection_expr, color, unselected_color, **_)
                 ))
 
     elif Store.current_backend == 'plotly':
-        shared_opts = dict(selectedpoints=False)
-        overlay_alpha = 1.0 if selection_expr else 0.0
+        backend_options = Store.options(backend='plotly')
+        style_options = backend_options[(type(element).name,)]['style']
+
+        if 'selectedpoints' in style_options.allowed_keywords:
+            shared_opts = dict(selectedpoints=False)
+        else:
+            shared_opts = dict()
+
+        if selection_expr:
+            overlay_opts = {}
+        else:
+            overlay_opts = {'visible': False}
+
         return (element.options(color=unselected_color, **shared_opts) *
                 element.select(selection_expr).options(
                     color=color,
-                    opacity=overlay_alpha,
+                    **overlay_opts,
                     **shared_opts
                 ))
