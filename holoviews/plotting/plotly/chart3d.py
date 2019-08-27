@@ -58,6 +58,10 @@ class Scatter3DPlot(Chart3DPlot, ScatterPlot):
 
     trace_kwargs = {'type': 'scatter3d', 'mode': 'markers'}
 
+    style_opts = [
+        'visible', 'marker', 'color', 'cmap', 'alpha', 'opacity', 'size', 'sizemin'
+    ]
+
 
 class Path3DPlot(Chart3DPlot, CurvePlot):
 

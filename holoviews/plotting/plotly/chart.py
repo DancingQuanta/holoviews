@@ -28,7 +28,7 @@ class ScatterPlot(ChartPlot, ColorbarPlot):
       Index of the dimension from which the color will the drawn""")
 
     style_opts = [
-        'marker', 'color', 'cmap', 'alpha', 'opacity', 'size', 'sizemin', 'selectedpoints'
+        'visible', 'marker', 'color', 'cmap', 'alpha', 'opacity', 'size', 'sizemin', 'selectedpoints'
     ]
 
     _nonvectorized_styles = ['cmap', 'alpha', 'sizemin', 'selectedpoints']
@@ -129,7 +129,7 @@ class SpreadPlot(ChartPlot):
         upper = mean + pos_error
         return [{x: xs, y: lower, 'fill': None},
                 {x: xs, y: upper, 'fill': 'tonext'+y}]
-    
+
 
 class ErrorBarsPlot(ChartPlot, ColorbarPlot):
 
@@ -287,7 +287,9 @@ class HistogramPlot(ElementPlot):
 
     trace_kwargs = {'type': 'bar'}
 
-    style_opts = ['color', 'line_color', 'line_width', 'opacity', 'selectedpoints']
+    style_opts = [
+        'visible', 'color', 'line_color', 'line_width', 'opacity', 'selectedpoints'
+    ]
 
     _style_key = 'marker'
 

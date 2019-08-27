@@ -44,6 +44,9 @@ class BivariatePlot(ChartPlot, ColorbarPlot):
 
         opts['showscale'] = copts.get('showscale', False)
 
+        # Add visible
+        opts['visible'] = style.get('visible', True)
+
         return opts
 
 
