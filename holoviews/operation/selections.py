@@ -1,3 +1,4 @@
+import numpy as np
 import param
 from weakref import WeakValueDictionary
 from ..streams import SelectionExprStream, Params
@@ -91,6 +92,8 @@ class link_selections(param.ParameterizedFunction):
 def _display_selection_fn(element, **kwargs):
     if element._selection_display_mode == 'overlay':
         return _display_overlay_selection(element, **kwargs)
+    elif element._selection_display_mode == 'color_list':
+        return _display_color_list_selection(element, **kwargs)
     else:
         return element
 
@@ -134,3 +137,18 @@ def _display_overlay_selection(element, selection_expr, color, unselected_color,
                     **overlay_opts,
                     **shared_opts
                 ))
+
+
+def _display_color_list_selection(element, selection_expr, color, unselected_color, **kwargs):
+
+    if Store.current_backend == 'plotly':
+        if not selection_expr:
+            colors = [unselected_color] * len(element.dimension_values(0))
+            return element.options(color=colors)
+        else:
+            selection_mask = np.array(selection_expr.apply(element), dtype='int8')
+            clrs = np.array([unselected_color, color])
+            colors = clrs[selection_mask]
+            return element.options(color=colors)
+    else:
+        return element

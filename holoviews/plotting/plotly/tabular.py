@@ -13,7 +13,7 @@ class TablePlot(ElementPlot):
 
     trace_kwargs = {'type': 'table'}
 
-    style_opts = ['line', 'fill', 'align', 'font', 'cell_height']
+    style_opts = ['line_color', 'color', 'align', 'font', 'cell_height']
 
     _style_key = 'cells'
 
@@ -21,7 +21,20 @@ class TablePlot(ElementPlot):
         header = dict(values=[d.pprint_label for d in element.dimensions()])
         cells = dict(values=[[d.pprint_value(v) for v in element.dimension_values(d)]
                               for d in element.dimensions()])
+
         return [{'header': header, 'cells': cells}]
+
+    def graph_options(self, element, ranges, style):
+        opts = super(TablePlot, self).graph_options(element, ranges, style)
+
+        # Transpose fill_color array so values apply by rows not column
+        if 'color' in opts.get('cells', {}):
+            opts['cells']['fill_color'] = [opts['cells'].pop('color')]
+
+        if 'line_color' in opts.get('cells', {}):
+            opts['cells']['line_color'] = [opts['cells']['line_color']]
+
+        return opts
 
     def init_layout(self, key, element, ranges):
         return dict(width=self.width, height=self.height,
