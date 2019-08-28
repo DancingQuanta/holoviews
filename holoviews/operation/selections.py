@@ -104,10 +104,17 @@ def _display_overlay_selection(element, selection_expr, color, unselected_color,
     on top of itself
     """
     if Store.current_backend == 'bokeh':
+        backend_options = Store.options(backend='bokeh')
+        style_options = backend_options[(type(element).name,)]['style']
+
         def alpha_opts(alpha):
-            return dict(selection_alpha=alpha,
-                        nonselection_alpha=alpha,
-                        alpha=alpha)
+            options = dict()
+
+            for opt_name in ['alpha', 'selection_alpha', 'nonselection_alpha']:
+                if opt_name in style_options.allowed_keywords:
+                    options[opt_name] = alpha
+
+            return options
 
         overlay_alpha = 1.0 if selection_expr else 0.0
         return (element.options(line_alpha=1.0,
