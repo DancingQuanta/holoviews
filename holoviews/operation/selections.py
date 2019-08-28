@@ -1,6 +1,8 @@
 import numpy as np
 import param
 from weakref import WeakValueDictionary
+
+from holoviews import Overlay
 from ..streams import SelectionExprStream, Params
 from ..core.element import Element, HoloMap, Layout
 from ..util import Dynamic
@@ -60,12 +62,16 @@ class link_selections(param.ParameterizedFunction):
 
         link_selections._instances[self.selection_name] = self
 
-        if isinstance(hvobj, Layout):
+        if isinstance(hvobj, Element):
+            dmap = self._to_dmap_with_selection(hvobj)
+        elif isinstance(hvobj, Overlay):
+            dmap = hvobj.map(
+                lambda element: self._to_dmap_with_selection(element),
+                specs=Element).collate()
+        else:
             dmap = hvobj.map(
                 lambda element: self._to_dmap_with_selection(element),
                 specs=Element)
-        else:
-            dmap = self._to_dmap_with_selection(hvobj)
 
         return dmap
 
