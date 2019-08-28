@@ -135,7 +135,7 @@ class ErrorBarsPlot(ChartPlot, ColorbarPlot):
 
     trace_kwargs = {'type': 'scatter', 'mode': 'lines', 'line': {'width': 0}}
 
-    style_opts = ['color', 'dash', 'line_width', 'thickness']
+    style_opts = ['visible', 'color', 'dash', 'line_width', 'thickness']
 
     _nonvectorized_styles = style_opts
 
