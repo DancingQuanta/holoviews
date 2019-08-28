@@ -1,7 +1,7 @@
 from holoviews.element.comparison import ComparisonTestCase
 import pandas as pd
 import numpy as np
-from holoviews import Dataset, Curve, Dimension, Scatter
+from holoviews import Dataset, Curve, Dimension, Scatter, Distribution
 import dask.dataframe as dd
 
 from holoviews.operation import histogram
@@ -248,3 +248,13 @@ class HistogramTestCase(DatasetPropertyTestCase):
         # Check that selection using dim expression produces the same result
         hist3 = hist1.select((dim('x') >= 4) & (dim('y') == 2))
         self.assertEqual(hist3, hist2)
+
+
+class DistributionTestCase(DatasetPropertyTestCase):
+
+    def setUp(self):
+        super(DistributionTestCase, self).setUp()
+        self.distribution = self.ds.to(Distribution, kdims='a', groupby=[])
+
+    def test_distribution_dataset(self):
+        self.assertEqual(self.distribution.dataset, self.ds)

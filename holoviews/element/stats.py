@@ -23,7 +23,8 @@ class StatisticsElement(Dataset, Element2D):
     _selection_display_mode = 'overlay'
 
     def __init__(self, data, kdims=None, vdims=None, **params):
-        if isinstance(data, Element):
+        if (isinstance(data, Element) and
+                data.interface.datatype != "dataframe"):
             params.update(get_param_values(data))
             kdims = kdims or data.dimensions()[:len(self.kdims)]
             data = tuple(data.dimension_values(d) for d in kdims)
