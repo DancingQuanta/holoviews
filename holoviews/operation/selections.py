@@ -104,6 +104,17 @@ def _display_selection_fn(element, **kwargs):
         return element
 
 
+def _get_color_property(element, color):
+    element_name = type(element).name
+    if Store.current_backend == 'bokeh':
+        if element_name == 'Violin':
+            return {"violin_fill_color": color}
+        elif element_name == 'Bivariate':
+            return {"cmap": [color]}
+
+    return {"color": color}
+
+
 def _display_overlay_selection(element, selection_expr, color, unselected_color, **kwargs):
     """
     Display a selection on an element by overlaying a subset of the element
@@ -116,18 +127,19 @@ def _display_overlay_selection(element, selection_expr, color, unselected_color,
         def alpha_opts(alpha):
             options = dict()
 
-            for opt_name in ['alpha', 'selection_alpha', 'nonselection_alpha']:
-                if opt_name in style_options.allowed_keywords:
+            for opt_name in style_options.allowed_keywords:
+                if 'alpha' in opt_name:
                     options[opt_name] = alpha
 
             return options
 
         overlay_alpha = 1.0 if selection_expr else 0.0
-        return (element.options(line_alpha=1.0,
-                                color=unselected_color,
-                                **alpha_opts(0.9)) *
+        return (element.options(
+            **_get_color_property(element, unselected_color),
+            **alpha_opts(0.9)) *
                 element.select(selection_expr).options(
-                    color=color, **alpha_opts(overlay_alpha)
+                    **_get_color_property(element, color),
+                    **alpha_opts(overlay_alpha)
                 ))
 
     elif Store.current_backend == 'plotly':
