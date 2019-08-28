@@ -64,14 +64,14 @@ class link_selections(param.ParameterizedFunction):
 
         if isinstance(hvobj, Element):
             dmap = self._to_dmap_with_selection(hvobj)
-        elif isinstance(hvobj, Overlay):
-            dmap = hvobj.map(
-                lambda element: self._to_dmap_with_selection(element),
-                specs=Element).collate()
         else:
             dmap = hvobj.map(
                 lambda element: self._to_dmap_with_selection(element),
                 specs=Element)
+
+        # Collate overlays
+        dmap = dmap.map(lambda overlay: overlay.collate(),
+                        specs=Overlay)
 
         return dmap
 
