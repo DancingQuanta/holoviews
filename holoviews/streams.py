@@ -774,7 +774,10 @@ class SelectionExprStream(Stream):
         from .element import Element
         if not isinstance(source, Element):
             raise ValueError("""
-The source of SelectionExprStream must be an instance of an Element subclass""")
+The source of SelectionExprStream must be an instance of an Element subclass.
+    Received value of type {typ}: {val}""".format(
+                typ=type(source), val=source
+            ))
 
         self._source_streams = []
         super(SelectionExprStream, self).__init__(source=source, **params)
