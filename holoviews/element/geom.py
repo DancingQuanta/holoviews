@@ -82,4 +82,4 @@ class VectorField(GeometrySelectionExpr, Geometry):
     vdims = param.List(default=[Dimension('Angle', cyclic=True, range=(0,2*np.pi)),
                                 Dimension('Magnitude')], bounds=(1, None))
 
-    _selection_display_mode = 'overlay'
+    _selection_display_mode = None
