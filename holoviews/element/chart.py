@@ -406,6 +406,33 @@ class Spikes(Chart2dSelectionExpr, Chart):
 
     _selection_display_mode = 'overlay'
 
+    _selection_streams = (BoundsXY,)
+
+    def _get_selection_expr_for_stream_value(self, **kwargs):
+        from ..util.transform import dim
+
+        if self.vdims:
+            # Spikes have dimension height, selection works like scatter
+            return super(Spikes, self)._get_selection_expr_for_stream_value(
+                **kwargs
+            )
+        else:
+            # Spike have fixed height, consider xdim only
+            if kwargs.get('bounds', None):
+                x0, y0, x1, y1 = kwargs['bounds']
+
+                xdim = self.kdims[0]
+                bbox = {
+                    xdim.name: (x0, x1),
+                }
+
+                selection_expr = (
+                        (dim(xdim) >= x0) & (dim(xdim) <= x1)
+                )
+
+                return selection_expr, bbox
+            return None, None
+
 
 class Area(Curve):
     """
