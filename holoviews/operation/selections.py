@@ -66,39 +66,28 @@ class link_selections(param.ParameterizedFunction):
 
         link_selections._instances[self.selection_name] = self
 
-        # Convert hvobj to dynamic map with selection support, if possible
-        dmap = hvobj.map(
-            self._to_dmap_with_selection,
-            specs=(DynamicMap, Element)
-        )
+        # Perform transform
+        hvobj_selection = self._selection_transform(hvobj)
 
-        # Collate overlays
-        dmap = dmap.map(lambda overlay: overlay.collate(), specs=Overlay)
+        return hvobj_selection
 
-        return dmap
+    # def _to_dmap_with_selection(self, hvobj):
+    #
+    #     # hvobj: DynamicMap or Element
+    #     dmap = self._build_selection_dynamic_map(hvobj)
+    #
+    #     if dmap is not None:
+    #         # Update dimension ranges
+    #         if isinstance(hvobj, HoloMap):
+    #             for d in hvobj.dimensions():
+    #                 dmap = dmap.redim.range(**{d.name: hvobj.range(d)})
+    #
+    #         return dmap
+    #     else:
+    #         # Unsupported object for selection, return as-is
+    #         return hvobj
 
-    def _to_dmap_with_selection(self, hvobj):
-
-        # hvobj: DynamicMap or Element
-        selection_fn, element = self._build_selection_callback(hvobj)
-
-        if selection_fn:
-            # Convert to DynamicMap
-            dmap = Dynamic(
-                element, operation=selection_fn, streams=[self.param_stream]
-            )
-
-            # Update dimension ranges
-            if isinstance(hvobj, HoloMap):
-                for d in hvobj.dimensions():
-                    dmap = dmap.redim.range(**{d.name: hvobj.range(d)})
-
-            return dmap
-        else:
-            # Unsupported object for selection, return as-is
-            return hvobj
-
-    def _build_selection_callback(
+    def _selection_transform(
             self,
             hvobj,
             operations=(),
@@ -115,16 +104,17 @@ class link_selections(param.ParameterizedFunction):
                 new_operations = (next_op,) + operations
 
                 # Recurse on child with added operation
-                return self._build_selection_callback(
+                return self._build_selection_dynamic_map(
                     hvobj=child_hvobj,
                     operations=new_operations,
                 )
             else:
                 # This is a DynamicMap that we don't know how to recurse into.
-                return None, None
+                # TODO: see if we can transform the output
+                return hvobj
 
         elif isinstance(hvobj, Element):
-            element = hvobj
+            element = hvobj.clone()
 
             # Register element to receive selection expression callbacks
             self._register_element(element)
@@ -132,98 +122,179 @@ class link_selections(param.ParameterizedFunction):
             # Build appropriate selection callback for element type
             if element._selection_display_mode == 'overlay':
                 # return element/dynamic map?
-                callback = _overlay_callback_for_ops(
-                    operations=operations
-                )
+                dmap = self._build_overlay_selection(element, operations)
             elif element._selection_display_mode == 'color_list':
-                callback = _colorlist_callback_for_ops(
-                    operations=operations
+                dmap = self._build_colorlist_selection(
+                    element, operations
                 )
             else:
                 # Unsupported element
-                callback = None
-                element = None
+                return hvobj
 
-            return callback, element
+            return dmap
+        # elif hvobj._deep_indexable:
+        #     new_hvobj = hvobj.clone(shared_data=False)
+        #     for k, v in new_hvobj.items():
+        #         new_hvobj[k] = self._selection_transform(
+        #             v, operations
+        #         )
+        #
+        #     try:
+        #         # Collate if container type supports it
+        #         new_hvobj = new_hvobj.collate()
+        #     except AttributeError:
+        #         pass
+        #
+        #     return new_hvobj
         else:
             # Unsupported object
-            return None, None
+            return hvobj
 
-
-def _overlay_callback_for_ops(operations=()):
-    """
-    Build selections on an element by overlaying subsets of the element
-    on top of itself
-    """
-    def _build_selection(
+    def _build_overlay_selection(self, element, operations=()):
+        base_layer = Dynamic(
             element,
-            unselected_color,  # from param stream
-            selection_color,  # from param stream
-            selection_expr,  # from param stream
-            **_,
-    ):
-        selection_colors = [selection_color]
-        base_element, overlay_elements = _build_element_layers(
+            operation=_build_layer_callback(0),
+            streams=[self.param_stream]
+        )
+        selection_layer = Dynamic(
             element,
-            unselected_color=unselected_color,
-            selection_colors=selection_colors,
-            selection_exprs=[selection_expr]
+            operation=_build_layer_callback(1),
+            streams=[self.param_stream]
         )
 
-        result = _maybe_map_ops(base_element, unselected_color, operations)
-        for overlay_element, color in zip(overlay_elements, selection_colors):
-            result = result * _maybe_map_ops(overlay_element, color, operations)
+        # Wrap in operations
+        for op in operations:
+            base_layer = op(base_layer)
+            selection_layer = op(selection_layer)
 
-        return result
-    return _build_selection
+        # Overlay
+        return base_layer * selection_layer
 
+    def _build_colorlist_selection(self, element, operations=()):
+        """
+        Build selections on an element by overlaying subsets of the element
+        on top of itself
+        """
 
-def _colorlist_callback_for_ops(operations=()):
-    """
-    Build selections on an element by overlaying subsets of the element
-    on top of itself
-    """
-    def _build_selection(
-            element,
-            unselected_color,  # from param stream
-            selection_color,  # from param stream
-            selection_expr,  # from param stream
-            **_,
-    ):
+        def _build_selection(
+                el,
+                unselected_color,  # from param stream
+                selection_color,  # from param stream
+                selection_expr,  # from param stream
+                **_,
+        ):
 
-        selection_exprs = [selection_expr]
-        selection_colors = [selection_color]
-        if Store.current_backend == 'plotly':
-            n = len(element.dimension_values(0))
+            selection_exprs = [selection_expr]
+            selection_colors = [selection_color]
+            if Store.current_backend == 'plotly':
+                n = len(el.dimension_values(0))
 
-            if not any(selection_exprs):
-                colors = [unselected_color] * n
-                return element.options(color=colors)
+                if not any(selection_exprs):
+                    colors = [unselected_color] * n
+                    return el.options(color=colors)
+                else:
+                    clrs = np.array(
+                        [unselected_color] + list(selection_colors))
+
+                    color_inds = np.zeros(n, dtype='int8')
+
+                    for i, expr, color in zip(
+                            range(1, len(clrs)),
+                            selection_exprs,
+                            selection_colors
+                    ):
+                        color_inds[expr.apply(el)] = i
+
+                    colors = clrs[color_inds]
+
+                    return el.options(color=colors)
             else:
-                clrs = np.array([unselected_color] + list(selection_colors))
+                return el
 
-                color_inds = np.zeros(n, dtype='int8')
+        selection = Dynamic(
+            element,
+            operation=_build_selection,
+            streams=[self.param_stream]
+        )
 
-                for i, expr, color in zip(
-                        range(1, len(clrs)),
-                        selection_exprs,
-                        selection_colors
-                ):
-                    color_inds[expr.apply(element)] = i
+        # Wrap in operations
+        for op in operations:
+            selection = op(selection)
 
-                colors = clrs[color_inds]
+        return selection
 
-                return _maybe_map_ops(
-                    element=element.options(color=colors),
-                    operations=operations,
-                )
-        else:
-            return _maybe_map_ops(
-                    element=element,
-                    operations=operations,
-                )
 
-    return _build_selection
+
+# def _build_overlay_callback():
+#     """
+#     Build selections on an element by overlaying subsets of the element
+#     on top of itself
+#     """
+#     def _build_selection(
+#             element,
+#             unselected_color,  # from param stream
+#             selection_color,  # from param stream
+#             selection_expr,  # from param stream
+#             **_,
+#     ):
+#         selection_colors = [selection_color]
+#         base_element, overlay_elements = _build_element_layers(
+#             element,
+#             unselected_color=unselected_color,
+#             selection_colors=selection_colors,
+#             selection_exprs=[selection_expr]
+#         )
+#
+#         result = base_element
+#         for overlay_element, color in zip(overlay_elements, selection_colors):
+#             result = result * overlay_element
+#
+#         return result
+#
+#
+#     return _build_selection
+#
+#
+# def _build_colorlist_callback():
+#     """
+#     Build selections on an element by overlaying subsets of the element
+#     on top of itself
+#     """
+#     def _build_selection(
+#             element,
+#             unselected_color,  # from param stream
+#             selection_color,  # from param stream
+#             selection_expr,  # from param stream
+#             **_,
+#     ):
+#
+#         selection_exprs = [selection_expr]
+#         selection_colors = [selection_color]
+#         if Store.current_backend == 'plotly':
+#             n = len(element.dimension_values(0))
+#
+#             if not any(selection_exprs):
+#                 colors = [unselected_color] * n
+#                 return element.options(color=colors)
+#             else:
+#                 clrs = np.array([unselected_color] + list(selection_colors))
+#
+#                 color_inds = np.zeros(n, dtype='int8')
+#
+#                 for i, expr, color in zip(
+#                         range(1, len(clrs)),
+#                         selection_exprs,
+#                         selection_colors
+#                 ):
+#                     color_inds[expr.apply(element)] = i
+#
+#                 colors = clrs[color_inds]
+#
+#                 return element.options(color=colors)
+#         else:
+#             return element
+#
+#     return _build_selection
 
 
 def _build_apply_ops(operations, color=None):
@@ -261,6 +332,80 @@ def _get_color_property(element, color):
             return {"cmap": [color]}
 
     return {"color": color}
+
+
+def _build_layer_callback(layer_number):
+    def _build_layer(
+            element,
+            unselected_color,  # from param stream
+            selection_color,  # from param stream
+            selection_expr,  # from param stream
+            **_,
+    ):
+        if layer_number == 0:
+            layer_color = unselected_color
+            selection_expr = True
+        else:
+            layer_color = selection_color
+
+        layer_element = _build_element_layer(
+            element, layer_color, selection_expr
+        )
+
+        return layer_element
+
+    return _build_layer
+
+
+def _build_element_layer(
+        element, layer_color, selection_expr=True
+):
+    from ..util.transform import dim
+    if isinstance(selection_expr, dim):
+        element = element.select(selection_expr)
+        visible = True
+    else:
+        visible = bool(selection_expr)
+
+    if Store.current_backend == 'bokeh':
+        backend_options = Store.options(backend='bokeh')
+        style_options = backend_options[(type(element).name,)]['style']
+
+        def alpha_opts(alpha):
+            options = dict()
+
+            for opt_name in style_options.allowed_keywords:
+                if 'alpha' in opt_name:
+                    options[opt_name] = alpha
+
+            return options
+
+        layer_alpha = 1.0 if visible else 0.0
+        layer_element = element.options(
+            **_get_color_property(element, layer_color),
+            **alpha_opts(layer_alpha)
+        )
+
+        return layer_element
+
+    elif Store.current_backend == 'plotly':
+        backend_options = Store.options(backend='plotly')
+        style_options = backend_options[(type(element).name,)]['style']
+
+        if 'selectedpoints' in style_options.allowed_keywords:
+            shared_opts = dict(selectedpoints=False)
+        else:
+            shared_opts = dict()
+
+        layer_element = element.options(
+            visible=visible,
+            **_get_color_property(element, layer_color),
+            **shared_opts
+        )
+
+        return layer_element
+    else:
+        raise ValueError("Unsupported backend: %s" % Store.current_backend)
 
 
 def _build_element_layers(
