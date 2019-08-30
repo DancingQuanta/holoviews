@@ -4,7 +4,7 @@ from weakref import WeakValueDictionary
 
 from holoviews import Overlay
 from holoviews.core import OperationCallable
-from ..streams import SelectionExprStream, Params, Stream, ParamMethod
+from ..streams import SelectionExprStream, Params, Stream
 from ..core.element import Element, HoloMap, Layout
 from ..util import Dynamic, DynamicMap
 from ..core.options import Store
@@ -19,8 +19,6 @@ class link_selections(param.ParameterizedFunction):
     selection_expr = param.Parameter(default=None)
     unselected_color = param.Color(default="#99a6b2")  # LightSlateGray - 65%
     selected_color = param.Color(default="#DC143C")  # Crimson
-    selection_name = param.String(default=None, constant=True)
-    _instances = WeakValueDictionary()
 
     @property
     def _selection_expr_streams(self):
@@ -131,18 +129,12 @@ class link_selections(param.ParameterizedFunction):
         self.param_stream.clear()
         self.selection_expr = None
 
-    def __call__(self, hvobj):
-        # Handle clearing existing selection with same name
-        old_instance = link_selections._instances.get(
-            self.selection_name, None
-        )
-        if old_instance is not None and old_instance is not self:
-            old_instance.clear()
-
-        link_selections._instances[self.selection_name] = self
+    def __call__(self, hvobj, **kwargs):
+        ## Apply params
+        self.param.set_param(**kwargs)
 
         # Perform transform
-        hvobj_selection = self._selection_transform(hvobj)
+        hvobj_selection = self._selection_transform(hvobj.clone(link=False))
 
         return hvobj_selection
 
