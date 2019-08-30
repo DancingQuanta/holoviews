@@ -13,6 +13,8 @@ from ..plotting.util import initialize_dynamic
 
 _UnselectedCmap = Stream.define('UnselectedCmap', cmap=[])
 _SelectedCmap = Stream.define('SelectedCmap', cmap=[])
+_Alpha = Stream.define('Alpha', alpha=1.0)
+
 
 class link_selections(param.ParameterizedFunction):
     selection_expr = param.Parameter(default=None)
@@ -54,36 +56,59 @@ class link_selections(param.ParameterizedFunction):
         return [self.selected_color]
 
     @property
-    def unselected_cmap_stream(self):
+    def _unselected_cmap_stream(self):
         try:
-            return self._unselected_cmap_stream
+            return self.__unselected_cmap_stream
         except AttributeError:
-            self._unselected_cmap_stream = _UnselectedCmap(
+            self.__unselected_cmap_stream = _UnselectedCmap(
                 cmap=self.unselected_cmap
             )
 
             def _update_cmap(*_):
-                self._unselected_cmap_stream.event(cmap=self.unselected_cmap)
+                self.__unselected_cmap_stream.event(cmap=self.unselected_cmap)
 
             self.param.watch(_update_cmap, parameter_names=['unselected_color'])
 
-            return self._unselected_cmap_stream
+            return self.__unselected_cmap_stream
 
     @property
-    def selected_cmap_stream(self):
+    def _selected_cmap_stream(self):
         try:
-            return self._selected_cmap_stream
+            return self.__selected_cmap_stream
         except AttributeError:
-            self._selected_cmap_stream = _SelectedCmap(
+            self.__selected_cmap_stream = _SelectedCmap(
                 cmap=self.selected_cmap
             )
 
             def _update_cmap(*_):
-                self._selected_cmap_stream.event(cmap=self.selected_cmap)
+                self.__selected_cmap_stream.event(cmap=self.selected_cmap)
 
             self.param.watch(_update_cmap, parameter_names=['selected_color'])
 
-            return self._selected_cmap_stream
+            return self.__selected_cmap_stream
+
+    @property
+    def _selected_alpha(self):
+        if self.selection_expr:
+            return 255
+        else:
+            return 0
+
+    @property
+    def _selected_alpha_stream(self):
+        try:
+            return self.__selected_alpha_stream
+        except AttributeError:
+            self.__selected_alpha_stream = _Alpha(
+                alpha=self._selected_alpha
+            )
+
+            def _update_alpha(*_):
+                self.__selected_alpha_stream.event(alpha=self._selected_alpha)
+
+            self.param.watch(_update_alpha, parameter_names=['selection_expr'])
+
+            return self.__selected_alpha_stream
 
     def _register_element(self, element):
         expr_stream = SelectionExprStream(source=element)
@@ -208,8 +233,17 @@ class link_selections(param.ParameterizedFunction):
         for op in operations:
             if 'cmap' in op.param:
                 # Add in the selection color as cmap for operation
-                base_op = op.instance(streams=op.streams + [self.unselected_cmap_stream])
-                select_op = op.instance(streams=op.streams + [self.selected_cmap_stream])
+                base_op = op.instance(
+                    streams=op.streams + [self._unselected_cmap_stream],
+                )
+
+                select_streams = op.streams + [self._selected_cmap_stream]
+                if 'alpha' in op.param:
+                    select_streams += [self._selected_alpha_stream]
+
+                select_op = op.instance(
+                    streams=select_streams,
+                )
 
                 base_layer = base_op(base_layer)
                 selection_layer = select_op(selection_layer)
