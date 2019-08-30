@@ -164,7 +164,6 @@ class link_selections(param.ParameterizedFunction):
                 overlay_elements = hvobj.callback.inputs
                 new_hvobj = self._selection_transform(overlay_elements[0])
                 for overlay_element in overlay_elements[1:]:
-                    print(overlay_element)
                     new_hvobj = new_hvobj * self._selection_transform(overlay_element)
 
                 return new_hvobj
