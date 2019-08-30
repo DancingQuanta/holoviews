@@ -174,7 +174,7 @@ class link_selections(param.ParameterizedFunction):
                 return hvobj
 
         elif isinstance(hvobj, Element):
-            element = hvobj
+            element = hvobj.clone(link=False)
 
             # Register element to receive selection expression callbacks
             self._register_element(element)
