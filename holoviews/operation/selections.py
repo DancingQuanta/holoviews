@@ -191,13 +191,15 @@ class link_selections(param.ParameterizedFunction):
                 return hvobj
 
             return dmap
+        elif isinstance(hvobj, HoloMap):
+            # HoloMap transformation not supported yet
+            return hvobj
         elif hvobj._deep_indexable:
             new_hvobj = hvobj.clone(shared_data=False)
             for k, v in hvobj.items():
                 new_hvobj[k] = self._selection_transform(
                     v, operations
                 )
-
             try:
                 # Collate if container type supports it
                 new_hvobj = new_hvobj.collate()
