@@ -167,6 +167,15 @@ class link_selections(param.ParameterizedFunction):
                     hvobj=child_hvobj,
                     operations=new_operations,
                 )
+            elif hvobj.type == Overlay and not hvobj.streams:
+                # Process overlay inputs individually and then overlay again
+                overlay_elements = hvobj.callback.inputs
+                new_hvobj = self._selection_transform(overlay_elements[0])
+                for overlay_element in overlay_elements[1:]:
+                    print(overlay_element)
+                    new_hvobj = new_hvobj * self._selection_transform(overlay_element)
+
+                return new_hvobj
             else:
                 # This is a DynamicMap that we don't know how to recurse into.
                 # TODO: see if we can transform the output
