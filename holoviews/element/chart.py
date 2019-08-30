@@ -1,5 +1,5 @@
 import numpy as np
-
+import copy
 import param
 
 from ..streams import BoundsXY
@@ -282,6 +282,7 @@ class Histogram(Chart):
             data=data,
             shared_data=shared_data,
             new_type=new_type,
+            operation_kwargs=copy.deepcopy(self.operation_kwargs),
             *args,
             **overrides
         )
@@ -352,7 +353,6 @@ class Histogram(Chart):
         will be None.
         """
         return self._operation_kwargs
-
 
     def __setstate__(self, state):
         """
