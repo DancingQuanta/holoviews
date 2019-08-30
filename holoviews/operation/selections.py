@@ -5,7 +5,7 @@ from weakref import WeakValueDictionary
 from holoviews import Overlay
 from holoviews.core import OperationCallable
 from ..streams import SelectionExprStream, Params, Stream
-from ..core.element import Element, HoloMap, Layout
+from ..core.element import Element, Layout
 from ..util import Dynamic, DynamicMap
 from ..core.options import Store
 from ..plotting.util import initialize_dynamic, linear_gradient
@@ -191,28 +191,12 @@ class link_selections(param.ParameterizedFunction):
                 return hvobj
 
             return dmap
-        elif isinstance(hvobj, HoloMap):
-            # HoloMap transformation not supported yet
-            return hvobj
-        elif hvobj._deep_indexable:
+        elif isinstance(hvobj, Layout):
             new_hvobj = hvobj.clone(shared_data=False)
             for k, v in hvobj.items():
                 new_hvobj[k] = self._selection_transform(
                     v, operations
                 )
-            try:
-                # Collate if container type supports it
-                new_hvobj = new_hvobj.collate()
-            except AttributeError:
-                pass
-
-            # Is this needed for HoloMaps?
-            # ---------------------------------
-            #         # Update dimension ranges
-            #         if isinstance(hvobj, HoloMap):
-            #             for d in hvobj.dimensions():
-            #                 dmap = dmap.redim.range(**{d.name: hvobj.range(d)})
-            # ---------------------------------
             return new_hvobj
         else:
             # Unsupported object
