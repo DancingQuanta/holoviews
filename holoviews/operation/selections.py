@@ -8,8 +8,7 @@ from ..streams import SelectionExprStream, Params, Stream, ParamMethod
 from ..core.element import Element, HoloMap, Layout
 from ..util import Dynamic, DynamicMap
 from ..core.options import Store
-from ..plotting.util import initialize_dynamic
-
+from ..plotting.util import initialize_dynamic, linear_gradient
 
 _UnselectedCmap = Stream.define('UnselectedCmap', cmap=[])
 _SelectedCmap = Stream.define('SelectedCmap', cmap=[])
@@ -48,12 +47,12 @@ class link_selections(param.ParameterizedFunction):
     @property
     @param.depends('unselected_color')
     def unselected_cmap(self):
-        return [self.unselected_color]
+        return _color_to_cmap(self.unselected_color)
 
     @property
     @param.depends('selected_color')
     def selected_cmap(self):
-        return [self.selected_color]
+        return _color_to_cmap(self.selected_color)
 
     @property
     def _unselected_cmap_stream(self):
@@ -328,6 +327,18 @@ class link_selections(param.ParameterizedFunction):
                            streams=[self.param_stream])
         else:
             return op(hvobj)
+
+
+def _color_to_cmap(color):
+    """
+    Create a light to dark cmap list from a base color
+    """
+    # Lighten start color by interpolating toward white
+    start_color = linear_gradient("#ffffff", color, 7)[2]
+
+    # Darken end color by interpolating toward black
+    end_color = linear_gradient(color, "#000000", 7)[2]
+    return [start_color, end_color]
 
 
 def _build_op_color_kwargs(op, color):
