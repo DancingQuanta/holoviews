@@ -2,7 +2,6 @@ import numpy as np
 import copy
 import param
 
-from ..streams import BoundsXY
 from ..core import util
 from ..core import Dimension, Dataset, Element2D
 from ..core.data import GridInterface
@@ -49,36 +48,7 @@ class Chart(Dataset, Element2D):
         return super(Chart, self).__getitem__(index)
 
 
-class Chart2dSelectionExpr(object):
-    """
-    Mixin class for Cartesian 2D Chart elements to add basic support for
-    SelectionExprStream streams.
-    """
-    _selection_streams = (BoundsXY,)
-
-    def _get_selection_expr_for_stream_value(self, **kwargs):
-        from ..util.transform import dim
-        if kwargs.get('bounds', None):
-            x0, y0, x1, y1 = kwargs['bounds']
-
-            xdim = self.kdims[0]
-            ydim = self.vdims[0]
-
-            bbox = {
-                xdim.name: (x0, x1),
-                ydim.name: (y0, y1),
-            }
-
-            selection_expr = (
-                    (dim(xdim) >= x0) & (dim(xdim) <= x1) &
-                    (dim(ydim) >= y0) & (dim(ydim) <= y1)
-            )
-
-            return selection_expr, bbox
-        return None, None
-
-
-class Scatter(Chart2dSelectionExpr, Chart):
+class Scatter(Chart):
     """
     Scatter is a Chart element representing a set of points in a 1D
     coordinate system where the key dimension maps to the points
@@ -91,7 +61,7 @@ class Scatter(Chart2dSelectionExpr, Chart):
     _selection_display_mode = 'overlay'
 
 
-class Curve(Chart2dSelectionExpr, Chart):
+class Curve(Chart):
     """
     Curve is a Chart element representing a line in a 1D coordinate
     system where the key dimension maps on the line x-coordinate and
@@ -102,7 +72,8 @@ class Curve(Chart2dSelectionExpr, Chart):
     group = param.String(default='Curve', constant=True)
 
 
-class ErrorBars(Chart2dSelectionExpr, Chart):
+
+class ErrorBars(Chart):
     """
     ErrorBars is a Chart element representing error bars in a 1D
     coordinate system where the key dimension corresponds to the
@@ -201,8 +172,6 @@ class Histogram(Chart):
 
     _binned = True
 
-    _selection_streams = (BoundsXY,)
-
     _selection_display_mode = 'overlay'
 
     def __init__(self, data, edges=None, **params):
@@ -217,10 +186,9 @@ class Histogram(Chart):
         elif isinstance(data, tuple) and len(data) == 2 and len(data[0])+1 == len(data[1]):
             data = data[::-1]
 
-        self._operation_kwargs = params.pop('operation_kwargs', None)
+        self._operation_kwargs = params.pop('_operation_kwargs', None)
 
         dataset = params.pop("dataset", None)
-
         super(Histogram, self).__init__(data, **params)
 
         if dataset:
@@ -229,46 +197,6 @@ class Histogram(Chart):
             # This is so that dataset contains the data needed to reconstruct
             # the element.
             self._dataset = dataset.clone()
-
-    def _get_selection_expr_for_stream_value(self, **kwargs):
-        from ..util.transform import dim
-        if kwargs.get('bounds', None):
-            x0, y0, x1, y1 = kwargs['bounds']
-
-            xdim = self.kdims[0]
-            ydim = self.vdims[0]
-
-            edges = self.edges
-            centers = self.dimension_values(xdim)
-            heights = self.dimension_values(ydim)
-
-            selected_mask = (
-                (centers >= x0) & (centers <= x1) &
-                (heights >= y0) & (heights <= y1)
-            )
-
-            selected_bins = (np.arange(len(centers))[selected_mask] + 1).tolist()
-            if not selected_bins:
-                return None, None
-
-            selection_expr = (
-                dim(xdim).digitize(edges).isin(selected_bins)
-            )
-
-            if selected_bins[-1] == len(centers):
-                # Handle values exactly on the upper boundary
-                selection_expr = selection_expr | (dim(xdim) == edges[-1])
-
-            bbox = {
-                xdim.name: (
-                    edges[max(0, min(selected_bins) - 1)],
-                    edges[min(len(edges - 1), max(selected_bins))],
-                ),
-            }
-
-            return selection_expr, bbox
-
-        return None, None
 
     def clone(self, data=None, shared_data=True, new_type=None, *args, **overrides):
         if 'dataset' in overrides:
@@ -282,7 +210,7 @@ class Histogram(Chart):
             data=data,
             shared_data=shared_data,
             new_type=new_type,
-            operation_kwargs=copy.deepcopy(self.operation_kwargs),
+            _operation_kwargs=copy.deepcopy(self._operation_kwargs),
             *args,
             **overrides
         )
@@ -296,63 +224,22 @@ class Histogram(Chart):
 
         return new_element
 
-    def select(self, selection_expr=None, selection_specs=None, **selection):
-        from ..operation import histogram
-        # Handle selection_specs and early exit
-        if selection_specs is not None and not isinstance(selection_specs, (list, tuple)):
-            selection_specs = [selection_specs]
-        if (selection_specs and not any(self.matches(sp) for sp in selection_specs)
-                or (not selection and not selection_expr)):
-            return self
+    def select(self, selection_specs=None, **selection):
+        selected = super(Histogram, self).select(
+            selection_specs=selection_specs, **selection
+        )
 
-        if self.dataset is not None and self.operation_kwargs is not None:
-            # We have what we need to perform selection on dataset and
-            # regenerate the histogram.
-            selected_dataset = self.dataset.select(selection_expr, **selection)
-            selected = histogram(selected_dataset, **self.operation_kwargs)
-            if selected_dataset.dataset is not None:
-                selected._dataset = selected_dataset.dataset
-            else:
-                selected._dataset = selected_dataset
-            return selected
-        else:
-            # Perform selection directly on histogram
-            selected = super(Histogram, self).select(
-                selection_expr=selection_expr,
-                selection_specs=selection_specs,
-                **selection
-            )
+        if not np.isscalar(selected) and not np.array_equal(selected.data, self.data):
+            # Selection changed histogram bins, so update dataset
+            selection = {
+                dim: sel for dim, sel in selection.items()
+                if dim in self.dimensions()+['selection_mask']
+            }
 
-            # Handle updating dataset
-            if (not np.isscalar(selected)
-                    and not np.array_equal(selected.data, self.data)
-                    and selected._dataset is not None):
+            if selected._dataset is not None:
+                selected._dataset = self.dataset.select(**selection)
 
-                # Selection changed histogram bins, so update dataset
-                selection = {
-                    dim: sel for dim, sel in selection.items()
-                    if dim in self.dimensions() + ['selection_mask']
-                }
-
-                if selected._dataset is not None:
-                    selected._dataset = self.dataset.select(
-                        selection_expr=selection_expr, **selection
-                    )
-
-            return selected
-
-    @property
-    def operation_kwargs(self):
-        """
-        If Histogram was generated by the holoviews.operation.histogram
-        operation, this property contains a dictionary of keyword-value
-        arguments that can be used with the histogram operation to regenerate
-        this histogram from the same input dataset.
-
-        If Histogram was created directly using the constructor, property
-        will be None.
-        """
-        return self._operation_kwargs
+        return selected
 
     def __setstate__(self, state):
         """
@@ -385,7 +272,7 @@ class Histogram(Chart):
         return self.interface.coords(self, self.kdims[0], edges=True)
 
 
-class Spikes(Chart2dSelectionExpr, Chart):
+class Spikes(Chart):
     """
     Spikes is a Chart element which represents a number of discrete
     spikes, events or observations in a 1D coordinate system. The key
@@ -405,34 +292,6 @@ class Spikes(Chart2dSelectionExpr, Chart):
     _auto_indexable_1d = False
 
     _selection_display_mode = 'overlay'
-
-    _selection_streams = (BoundsXY,)
-
-    def _get_selection_expr_for_stream_value(self, **kwargs):
-        from ..util.transform import dim
-
-        if self.vdims:
-            # Spikes have dimension height, selection works like scatter
-            return super(Spikes, self)._get_selection_expr_for_stream_value(
-                **kwargs
-            )
-        else:
-            # Spike have fixed height, consider xdim only
-            if kwargs.get('bounds', None):
-                x0, y0, x1, y1 = kwargs['bounds']
-
-                xdim = self.kdims[0]
-                bbox = {
-                    xdim.name: (x0, x1),
-                }
-
-                selection_expr = (
-                        (dim(xdim) >= x0) & (dim(xdim) <= x1)
-                )
-
-                return selection_expr, bbox
-            return None, None
-
 
 class Area(Curve):
     """
