@@ -2,6 +2,8 @@ import numpy as np
 import param
 from weakref import WeakValueDictionary
 
+from param.parameterized import bothmethod
+
 from holoviews import Overlay
 from holoviews.core import OperationCallable
 from ..streams import SelectionExpr, Params, Stream
@@ -10,9 +12,10 @@ from ..util import Dynamic, DynamicMap
 from ..core.options import Store
 from ..plotting.util import initialize_dynamic, linear_gradient
 
-_UnselectedCmap = Stream.define('UnselectedCmap', cmap=[])
-_SelectedCmap = Stream.define('SelectedCmap', cmap=[])
+_Cmap = Stream.define('Cmap', cmap=[])
 _Alpha = Stream.define('Alpha', alpha=1.0)
+_Exprs = Stream.define('Exprs', exprs=[])
+_Colors = Stream.define('Colors', colors=[])
 
 
 class link_selections(param.ParameterizedFunction):
@@ -20,69 +23,66 @@ class link_selections(param.ParameterizedFunction):
     unselected_color = param.Color(default="#99a6b2")  # LightSlateGray - 65%
     selected_color = param.Color(default="#DC143C")  # Crimson
 
-    @property
-    def _selection_expr_streams(self):
-        try:
-            return self.__selection_expr_streams
-        except AttributeError:
-            self.__selection_expr_streams = []
-            return self.__selection_expr_streams
+    @bothmethod
+    def instance(self_or_cls, **params):
+        inst = super(link_selections, self_or_cls).instance(**params)
 
-    @property
-    def param_stream(self):
-        try:
-            return self._param_stream
-        except AttributeError:
-            self._param_stream = Params(
-                self, parameters=[
-                    'selection_expr',
-                    'unselected_color',
-                    'selected_color'
-                ]
+        # Init private properties
+        inst._selection_expr_streams = []
+
+        # Colors stream
+        inst._colors_stream = _Colors(
+            colors=[inst.unselected_color, inst.selected_color]
+        )
+
+        # Cmap streams
+        inst._cmap_streams = [
+            _Cmap(cmap=inst.unselected_cmap),
+            _Cmap(cmap=inst.selected_cmap),
+        ]
+
+        def update_colors(*_):
+            inst._colors_stream.event(
+                colors=[inst.unselected_color, inst.selected_color]
             )
-            return self._param_stream
+            inst._cmap_streams[0].event(cmap=inst.unselected_cmap)
+            inst._cmap_streams[1].event(cmap=inst.selected_cmap)
+
+        inst.param.watch(
+            update_colors,
+            parameter_names=['unselected_color', 'selected_color']
+        )
+
+        # Exprs stream
+        inst._exprs_stream = _Exprs(exprs=[True, None])
+
+        def update_exprs(*_):
+            inst._exprs_stream.event(exprs=[True, inst.selection_expr])
+
+        inst.param.watch(
+            update_exprs,
+            parameter_names=['selection_expr']
+        )
+
+        # Alpha streams
+        inst._alpha_streams = [
+            _Alpha(alpha=255),
+            _Alpha(alpha=inst._selected_alpha),
+        ]
+
+        def update_alphas(*_):
+            inst._alpha_streams[1].event(alpha=inst._selected_alpha)
+
+        inst.param.watch(update_alphas, parameter_names=['selection_expr'])
+        return inst
 
     @property
-    @param.depends('unselected_color')
     def unselected_cmap(self):
         return _color_to_cmap(self.unselected_color)
 
     @property
-    @param.depends('selected_color')
     def selected_cmap(self):
         return _color_to_cmap(self.selected_color)
-
-    @property
-    def _unselected_cmap_stream(self):
-        try:
-            return self.__unselected_cmap_stream
-        except AttributeError:
-            self.__unselected_cmap_stream = _UnselectedCmap(
-                cmap=self.unselected_cmap
-            )
-
-            def _update_cmap(*_):
-                self.__unselected_cmap_stream.event(cmap=self.unselected_cmap)
-
-            self.param.watch(_update_cmap, parameter_names=['unselected_color'])
-
-            return self.__unselected_cmap_stream
-
-    @property
-    def _selected_cmap_stream(self):
-        try:
-            return self.__selected_cmap_stream
-        except AttributeError:
-            self.__selected_cmap_stream = _SelectedCmap(
-                cmap=self.selected_cmap
-            )
-
-            def _update_cmap(*_):
-                self.__selected_cmap_stream.event(cmap=self.selected_cmap)
-
-            self.param.watch(_update_cmap, parameter_names=['selected_color'])
-
-            return self.__selected_cmap_stream
 
     @property
     def _selected_alpha(self):
@@ -90,22 +90,6 @@ class link_selections(param.ParameterizedFunction):
             return 255
         else:
             return 0
-
-    @property
-    def _selected_alpha_stream(self):
-        try:
-            return self.__selected_alpha_stream
-        except AttributeError:
-            self.__selected_alpha_stream = _Alpha(
-                alpha=self._selected_alpha
-            )
-
-            def _update_alpha(*_):
-                self.__selected_alpha_stream.event(alpha=self._selected_alpha)
-
-            self.param.watch(_update_alpha, parameter_names=['selection_expr'])
-
-            return self.__selected_alpha_stream
 
     def _register_element(self, element):
         expr_stream = SelectionExpr(source=element)
@@ -126,7 +110,6 @@ class link_selections(param.ParameterizedFunction):
             stream.source = None
             stream.clear()
         self._selection_expr_streams.clear()
-        self.param_stream.clear()
         self.selection_expr = None
 
     def __call__(self, hvobj, **kwargs):
@@ -191,12 +174,19 @@ class link_selections(param.ParameterizedFunction):
                 return hvobj
 
             return dmap
-        elif isinstance(hvobj, Layout):
+        elif isinstance(hvobj, (Layout, Overlay)):
             new_hvobj = hvobj.clone(shared_data=False)
             for k, v in hvobj.items():
                 new_hvobj[k] = self._selection_transform(
                     v, operations
                 )
+
+            # collate if available. Needed for Overlay
+            try:
+                new_hvobj = new_hvobj.collate()
+            except AttributeError:
+                pass
+
             return new_hvobj
         else:
             # Unsupported object
@@ -206,12 +196,12 @@ class link_selections(param.ParameterizedFunction):
         base_layer = Dynamic(
             element,
             operation=_build_layer_callback(0),
-            streams=[self.param_stream]
+            streams=[self._colors_stream, self._exprs_stream]
         )
         selection_layer = Dynamic(
             element,
             operation=_build_layer_callback(1),
-            streams=[self.param_stream]
+            streams=[self._colors_stream, self._exprs_stream]
         )
 
         # Wrap in operations
@@ -219,16 +209,15 @@ class link_selections(param.ParameterizedFunction):
             if 'cmap' in op.param:
                 # Add in the selection color as cmap for operation
                 base_op = op.instance(
-                    streams=op.streams + [self._unselected_cmap_stream],
+                    streams=op.streams + [self._cmap_streams[0]]
                 )
 
-                select_streams = op.streams + [self._selected_cmap_stream]
+                select_streams = op.streams + [self._cmap_streams[1]]
+
                 if 'alpha' in op.param:
-                    select_streams += [self._selected_alpha_stream]
+                    select_streams += [self._alpha_streams[1]]
 
-                select_op = op.instance(
-                    streams=select_streams,
-                )
+                select_op = op.instance(streams=select_streams)
 
                 base_layer = base_op(base_layer)
                 selection_layer = select_op(selection_layer)
@@ -245,16 +234,11 @@ class link_selections(param.ParameterizedFunction):
         on top of itself
         """
 
-        def _build_selection(
-                el,
-                unselected_color,  # from param stream
-                selected_color,  # from param stream
-                selection_expr,  # from param stream
-                **_,
-        ):
+        def _build_selection(el, colors, exprs, **_):
 
-            selection_exprs = [selection_expr]
-            selected_colors = [selected_color]
+            selection_exprs = exprs[1:]
+            unselected_color = colors[0]
+            selected_colors = colors[1:]
             if Store.current_backend == 'plotly':
                 n = len(el.dimension_values(0))
 
@@ -283,7 +267,7 @@ class link_selections(param.ParameterizedFunction):
         dmap = Dynamic(
             element,
             operation=_build_selection,
-            streams=[self.param_stream]
+            streams=[self._colors_stream, self._exprs_stream]
         )
 
         # Wrap in operations
@@ -293,24 +277,14 @@ class link_selections(param.ParameterizedFunction):
         return dmap
 
     def _apply_op_with_color(self, hvobj, op, layer_number):
-        def _color_op_fn(
-                element,
-                unselected_color,  # from param stream
-                selected_color,  # from param stream
-                **_,
-        ):
-            if layer_number == 0:
-                color = unselected_color
-            else:
-                color = selected_color
-
-            op_kwargs = _build_op_color_kwargs(op, color)
+        def _color_op_fn(element, colors, **_):
+            op_kwargs = _build_op_color_kwargs(op, colors[layer_number])
             return op(element, **op_kwargs)
 
         if _build_op_color_kwargs(op, 'dummy'):
             return Dynamic(hvobj,
                            operation=_color_op_fn,
-                           streams=[self.param_stream])
+                           streams=[self._colors_stream])
         else:
             return op(hvobj)
 
@@ -352,21 +326,9 @@ def _get_color_property(element, color):
 
 
 def _build_layer_callback(layer_number):
-    def _build_layer(
-            element,
-            unselected_color,  # from param stream
-            selected_color,  # from param stream
-            selection_expr,  # from param stream
-            **_,
-    ):
-        if layer_number == 0:
-            layer_color = unselected_color
-            selection_expr = True
-        else:
-            layer_color = selected_color
-
+    def _build_layer(element, colors, exprs, **_):
         layer_element = _build_element_layer(
-            element, layer_color, selection_expr
+            element, colors[layer_number], exprs[layer_number]
         )
 
         return layer_element
