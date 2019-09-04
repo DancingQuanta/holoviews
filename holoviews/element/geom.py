@@ -30,16 +30,28 @@ class Geometry(Dataset, Element2D):
 class GeometrySelectionExpr(object):
     """
     Mixin class for Geometry elements to add basic support for
-    SelectionExprStream streams.
+    SelectionExpr streams.
     """
     _selection_streams = (BoundsXY,)
 
     def _get_selection_expr_for_stream_value(self, **kwargs):
         from ..util.transform import dim
+
+        invert_axes = self.opts.get('plot').kwargs.get('invert_axes', False)
+
         if kwargs.get('bounds', None):
             x0, y0, x1, y1 = kwargs['bounds']
 
-            xdim, ydim = self.kdims[:2]
+            # Handle invert_xaxis/invert_yaxis
+            if y0 > y1:
+                y0, y1 = y1, y0
+            if x0 > x1:
+                x0, x1 = x1, x0
+
+            if invert_axes:
+                ydim, xdim = self.kdims[:2]
+            else:
+                xdim, ydim = self.kdims[:2]
 
             bbox = {
                 xdim.name: (x0, x1),

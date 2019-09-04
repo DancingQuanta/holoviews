@@ -4,7 +4,7 @@ from weakref import WeakValueDictionary
 
 from holoviews import Overlay
 from holoviews.core import OperationCallable
-from ..streams import SelectionExprStream, Params, Stream
+from ..streams import SelectionExpr, Params, Stream
 from ..core.element import Element, Layout
 from ..util import Dynamic, DynamicMap
 from ..core.options import Store
@@ -108,7 +108,7 @@ class link_selections(param.ParameterizedFunction):
             return self.__selected_alpha_stream
 
     def _register_element(self, element):
-        expr_stream = SelectionExprStream(source=element)
+        expr_stream = SelectionExpr(source=element)
 
         def _update_expr(selection_expr, bbox):
             if selection_expr:
