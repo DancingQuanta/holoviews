@@ -98,19 +98,10 @@ class _base_link_selections(param.ParameterizedFunction):
             # Register element to receive selection expression callbacks
             self._register_element(element)
 
-            # Build appropriate selection callback for element type
-            if element._selection_display_mode == 'overlay':
-                # return element/dynamic map?
-                dmap = self._build_overlay_selection(element, operations)
-            elif element._selection_display_mode == 'color_list':
-                dmap = self._build_colorlist_selection(
-                    element, operations
-                )
-            else:
-                # Unsupported element
-                return hvobj
+            return _build_selection_dmap(
+                self._selection_streams, element, operations
+            )
 
-            return dmap
         elif isinstance(hvobj, (Layout, Overlay)):
             new_hvobj = hvobj.clone(shared_data=False)
             for k, v in hvobj.items():
@@ -128,90 +119,6 @@ class _base_link_selections(param.ParameterizedFunction):
         else:
             # Unsupported object
             return hvobj
-
-    def _build_overlay_selection(self, element, operations=()):
-        layers = []
-        num_layers = len(self._colors_stream.colors)
-        if not num_layers:
-            return Overlay(items=[])
-
-        for layer_number in range(num_layers):
-            layers.append(
-                Dynamic(
-                    element,
-                    operation=_build_layer_callback(layer_number),
-                    streams=[self._colors_stream, self._exprs_stream]
-                )
-            )
-
-        # Wrap in operations
-        import copy
-        for op in operations:
-            for layer_number in range(num_layers):
-                streams = copy.copy(op.streams)
-
-                if 'cmap' in op.param:
-                    streams += [self._cmap_streams[layer_number]]
-
-                if 'alpha' in op.param:
-                    streams += [self._alpha_streams[layer_number]]
-
-                new_op = op.instance(streams=streams)
-                layers[layer_number] = new_op(layers[layer_number])
-
-        # build overlay
-        result = layers[0]
-        for layer in layers[1:]:
-            result *= layer
-        return result
-
-    def _build_colorlist_selection(self, element, operations=()):
-        """
-        Build selections on an element by overlaying subsets of the element
-        on top of itself
-        """
-
-        def _build_selection(el, colors, exprs, **_):
-
-            selection_exprs = exprs[1:]
-            unselected_color = colors[0]
-            selected_colors = colors[1:]
-            if Store.current_backend == 'plotly':
-                n = len(el.dimension_values(0))
-
-                if not any(selection_exprs):
-                    colors = [unselected_color] * n
-                    return el.options(color=colors)
-                else:
-                    clrs = np.array(
-                        [unselected_color] + list(selected_colors))
-
-                    color_inds = np.zeros(n, dtype='int8')
-
-                    for i, expr, color in zip(
-                            range(1, len(clrs)),
-                            selection_exprs,
-                            selected_colors
-                    ):
-                        color_inds[expr.apply(el)] = i
-
-                    colors = clrs[color_inds]
-
-                    return el.options(color=colors)
-            else:
-                return el
-
-        dmap = Dynamic(
-            element,
-            operation=_build_selection,
-            streams=[self._colors_stream, self._exprs_stream]
-        )
-
-        # Wrap in operations
-        for op in operations:
-            dmap = op(dmap)
-
-        return dmap
 
     def _apply_op_with_color(self, hvobj, op, layer_number):
         def _color_op_fn(element, colors, **_):
@@ -327,6 +234,108 @@ class link_selections(_base_link_selections):
     def _expr_stream_updated(self, selection_expr, bbox):
         if selection_expr:
             self.selection_expr = selection_expr
+
+
+def _build_selection_dmap(selection_streams, element, operations):
+    # Build appropriate selection callback for element type
+    if element._selection_display_mode == 'overlay':
+        # return element/dynamic map?
+        return _build_overlay_selection(
+            selection_streams, element, operations
+        )
+    elif element._selection_display_mode == 'color_list':
+        return _build_colorlist_selection(
+            selection_streams, element, operations
+        )
+    else:
+        # Unsupported element
+        return element
+
+
+def _build_overlay_selection(selection_streams, element, operations=()):
+    layers = []
+    num_layers = len(selection_streams.colors_stream.colors)
+    if not num_layers:
+        return Overlay(items=[])
+
+    for layer_number in range(num_layers):
+        layers.append(
+            Dynamic(
+                element,
+                operation=_build_layer_callback(layer_number),
+                streams=[selection_streams.colors_stream, selection_streams.exprs_stream]
+            )
+        )
+
+    # Wrap in operations
+    import copy
+    for op in operations:
+        for layer_number in range(num_layers):
+            streams = copy.copy(op.streams)
+
+            if 'cmap' in op.param:
+                streams += [selection_streams.cmap_streams[layer_number]]
+
+            if 'alpha' in op.param:
+                streams += [selection_streams.alpha_streams[layer_number]]
+
+            new_op = op.instance(streams=streams)
+            layers[layer_number] = new_op(layers[layer_number])
+
+    # build overlay
+    result = layers[0]
+    for layer in layers[1:]:
+        result *= layer
+    return result
+
+
+def _build_colorlist_selection(selection_streams, element, operations=()):
+    """
+    Build selections on an element by overlaying subsets of the element
+    on top of itself
+    """
+
+    def _build_selection(el, colors, exprs, **_):
+
+        selection_exprs = exprs[1:]
+        unselected_color = colors[0]
+        selected_colors = colors[1:]
+        if Store.current_backend == 'plotly':
+            n = len(el.dimension_values(0))
+
+            if not any(selection_exprs):
+                colors = [unselected_color] * n
+                return el.options(color=colors)
+            else:
+                clrs = np.array(
+                    [unselected_color] + list(selected_colors))
+
+                color_inds = np.zeros(n, dtype='int8')
+
+                for i, expr, color in zip(
+                        range(1, len(clrs)),
+                        selection_exprs,
+                        selected_colors
+                ):
+                    color_inds[expr.apply(el)] = i
+
+                colors = clrs[color_inds]
+
+                return el.options(color=colors)
+        else:
+            return el
+
+    dmap = Dynamic(
+        element,
+        operation=_build_selection,
+        streams=[selection_streams.colors_stream, selection_streams.exprs_stream]
+    )
+
+    # Apply operations
+    for op in operations:
+        dmap = op(dmap)
+
+    return dmap
 
 
 def _color_to_cmap(color):
