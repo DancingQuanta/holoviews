@@ -130,40 +130,40 @@ class _base_link_selections(param.ParameterizedFunction):
             return hvobj
 
     def _build_overlay_selection(self, element, operations=()):
-        base_layer = Dynamic(
-            element,
-            operation=_build_layer_callback(0),
-            streams=[self._colors_stream, self._exprs_stream]
-        )
-        selection_layer = Dynamic(
-            element,
-            operation=_build_layer_callback(1),
-            streams=[self._colors_stream, self._exprs_stream]
-        )
+        layers = []
+        num_layers = len(self._colors_stream.colors)
+        if not num_layers:
+            return Overlay(items=[])
+
+        for layer_number in range(num_layers):
+            layers.append(
+                Dynamic(
+                    element,
+                    operation=_build_layer_callback(layer_number),
+                    streams=[self._colors_stream, self._exprs_stream]
+                )
+            )
 
         # Wrap in operations
+        import copy
         for op in operations:
-            if 'cmap' in op.param:
-                # Add in the selection color as cmap for operation
-                base_op = op.instance(
-                    streams=op.streams + [self._cmap_streams[0]]
-                )
+            for layer_number in range(num_layers):
+                streams = copy.copy(op.streams)
 
-                select_streams = op.streams + [self._cmap_streams[1]]
+                if 'cmap' in op.param:
+                    streams += [self._cmap_streams[layer_number]]
 
                 if 'alpha' in op.param:
-                    select_streams += [self._alpha_streams[1]]
+                    streams += [self._alpha_streams[layer_number]]
 
-                select_op = op.instance(streams=select_streams)
+                new_op = op.instance(streams=streams)
+                layers[layer_number] = new_op(layers[layer_number])
 
-                base_layer = base_op(base_layer)
-                selection_layer = select_op(selection_layer)
-            else:
-                base_layer = op(base_layer)
-                selection_layer = op(selection_layer)
-
-        # Overlay
-        return base_layer * selection_layer
+        # build overlay
+        result = layers[0]
+        for layer in layers[1:]:
+            result *= layer
+        return result
 
     def _build_colorlist_selection(self, element, operations=()):
         """
