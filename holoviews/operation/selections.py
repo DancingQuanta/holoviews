@@ -1,6 +1,6 @@
+from collections import namedtuple
 import numpy as np
 import param
-from weakref import WeakValueDictionary
 
 from param.parameterized import bothmethod
 
@@ -17,89 +17,27 @@ _Alpha = Stream.define('Alpha', alpha=1.0)
 _Exprs = Stream.define('Exprs', exprs=[])
 _Colors = Stream.define('Colors', colors=[])
 
+_SelectionStreams = namedtuple(
+    'SelectionStreams', 'colors_stream exprs_stream cmap_streams alpha_streams'
+)
 
-class link_selections(param.ParameterizedFunction):
-    selection_expr = param.Parameter(default=None)
-    unselected_color = param.Color(default="#99a6b2")  # LightSlateGray - 65%
-    selected_color = param.Color(default="#DC143C")  # Crimson
 
+class _base_link_selections(param.ParameterizedFunction):
     @bothmethod
     def instance(self_or_cls, **params):
-        inst = super(link_selections, self_or_cls).instance(**params)
+        inst = super(_base_link_selections, self_or_cls).instance(**params)
 
         # Init private properties
         inst._selection_expr_streams = []
 
-        # Colors stream
-        inst._colors_stream = _Colors(
-            colors=[inst.unselected_color, inst.selected_color]
-        )
+        # Init selection streams
+        inst._selection_streams = self_or_cls._build_selection_streams(inst)
 
-        # Cmap streams
-        inst._cmap_streams = [
-            _Cmap(cmap=inst.unselected_cmap),
-            _Cmap(cmap=inst.selected_cmap),
-        ]
-
-        def update_colors(*_):
-            inst._colors_stream.event(
-                colors=[inst.unselected_color, inst.selected_color]
-            )
-            inst._cmap_streams[0].event(cmap=inst.unselected_cmap)
-            inst._cmap_streams[1].event(cmap=inst.selected_cmap)
-
-        inst.param.watch(
-            update_colors,
-            parameter_names=['unselected_color', 'selected_color']
-        )
-
-        # Exprs stream
-        inst._exprs_stream = _Exprs(exprs=[True, None])
-
-        def update_exprs(*_):
-            inst._exprs_stream.event(exprs=[True, inst.selection_expr])
-
-        inst.param.watch(
-            update_exprs,
-            parameter_names=['selection_expr']
-        )
-
-        # Alpha streams
-        inst._alpha_streams = [
-            _Alpha(alpha=255),
-            _Alpha(alpha=inst._selected_alpha),
-        ]
-
-        def update_alphas(*_):
-            inst._alpha_streams[1].event(alpha=inst._selected_alpha)
-
-        inst.param.watch(update_alphas, parameter_names=['selection_expr'])
         return inst
-
-    @property
-    def unselected_cmap(self):
-        return _color_to_cmap(self.unselected_color)
-
-    @property
-    def selected_cmap(self):
-        return _color_to_cmap(self.selected_color)
-
-    @property
-    def _selected_alpha(self):
-        if self.selection_expr:
-            return 255
-        else:
-            return 0
 
     def _register_element(self, element):
         expr_stream = SelectionExpr(source=element)
-
-        def _update_expr(selection_expr, bbox):
-            if selection_expr:
-                self.selection_expr = selection_expr
-
-        expr_stream.add_subscriber(_update_expr)
-
+        expr_stream.add_subscriber(self._expr_stream_updated)
         self._selection_expr_streams.append(expr_stream)
 
     def __del__(self):
@@ -110,7 +48,6 @@ class link_selections(param.ParameterizedFunction):
             stream.source = None
             stream.clear()
         self._selection_expr_streams.clear()
-        self.selection_expr = None
 
     def __call__(self, hvobj, **kwargs):
         ## Apply params
@@ -287,6 +224,109 @@ class link_selections(param.ParameterizedFunction):
                            streams=[self._colors_stream])
         else:
             return op(hvobj)
+
+    def _expr_stream_updated(self, selection_expr, bbox):
+        raise NotImplementedError()
+
+    @classmethod
+    def _build_selection_streams(cls, inst):
+        raise NotImplementedError()
+
+    # Will go away...
+    @property
+    def _colors_stream(self):
+        return self._selection_streams.colors_stream
+
+    @property
+    def _exprs_stream(self):
+        return self._selection_streams.exprs_stream
+
+    @property
+    def _cmap_streams(self):
+        return self._selection_streams.cmap_streams
+
+    @property
+    def _alpha_streams(self):
+        return self._selection_streams.alpha_streams
+
+
+class link_selections(_base_link_selections):
+    selection_expr = param.Parameter(default=None)
+    unselected_color = param.Color(default="#99a6b2")  # LightSlateGray - 65%
+    selected_color = param.Color(default="#DC143C")  # Crimson
+
+    @classmethod
+    def _build_selection_streams(cls, inst):
+        # Colors stream
+        colors_stream = _Colors(
+            colors=[inst.unselected_color, inst.selected_color]
+        )
+
+        # Cmap streams
+        cmap_streams = [
+            _Cmap(cmap=inst.unselected_cmap),
+            _Cmap(cmap=inst.selected_cmap),
+        ]
+
+        def update_colors(*_):
+            colors_stream.event(
+                colors=[inst.unselected_color, inst.selected_color]
+            )
+            cmap_streams[0].event(cmap=inst.unselected_cmap)
+            cmap_streams[1].event(cmap=inst.selected_cmap)
+
+        inst.param.watch(
+            update_colors,
+            parameter_names=['unselected_color', 'selected_color']
+        )
+
+        # Exprs stream
+        exprs_stream = _Exprs(exprs=[True, None])
+
+        def update_exprs(*_):
+            exprs_stream.event(exprs=[True, inst.selection_expr])
+
+        inst.param.watch(
+            update_exprs,
+            parameter_names=['selection_expr']
+        )
+
+        # Alpha streams
+        alpha_streams = [
+            _Alpha(alpha=255),
+            _Alpha(alpha=inst._selected_alpha),
+        ]
+
+        def update_alphas(*_):
+            alpha_streams[1].event(alpha=inst._selected_alpha)
+
+        inst.param.watch(update_alphas, parameter_names=['selection_expr'])
+
+        return _SelectionStreams(
+            colors_stream=colors_stream,
+            exprs_stream=exprs_stream,
+            alpha_streams=alpha_streams,
+            cmap_streams=cmap_streams,
+        )
+
+    @property
+    def unselected_cmap(self):
+        return _color_to_cmap(self.unselected_color)
+
+    @property
+    def selected_cmap(self):
+        return _color_to_cmap(self.selected_color)
+
+    @property
+    def _selected_alpha(self):
+        if self.selection_expr:
+            return 255
+        else:
+            return 0
+
+    def _expr_stream_updated(self, selection_expr, bbox):
+        if selection_expr:
+            self.selection_expr = selection_expr
 
 
 def _color_to_cmap(color):
