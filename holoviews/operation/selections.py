@@ -288,52 +288,17 @@ class OverlaySelectionDisplay(SelectionDisplay):
     def _build_element_layer(
             self, element, layer_color, selection_expr=True
     ):
+        raise NotImplementedError()
+
+    @staticmethod
+    def _select(element, selection_expr):
         from ..util.transform import dim
         if isinstance(selection_expr, dim):
             element = element.select(selection_expr=selection_expr)
             visible = True
         else:
             visible = bool(selection_expr)
-
-        if Store.current_backend == 'bokeh':
-            backend_options = Store.options(backend='bokeh')
-            style_options = backend_options[(type(element).name,)]['style']
-
-            def alpha_opts(alpha):
-                options = dict()
-
-                for opt_name in style_options.allowed_keywords:
-                    if 'alpha' in opt_name:
-                        options[opt_name] = alpha
-
-                return options
-
-            layer_alpha = 1.0 if visible else 0.0
-            layer_element = element.options(
-                **self._get_color_kwarg(layer_color),
-                **alpha_opts(layer_alpha)
-            )
-
-            return layer_element
-
-        elif Store.current_backend == 'plotly':
-            backend_options = Store.options(backend='plotly')
-            style_options = backend_options[(type(element).name,)]['style']
-
-            if 'selectedpoints' in style_options.allowed_keywords:
-                shared_opts = dict(selectedpoints=False)
-            else:
-                shared_opts = dict()
-
-            layer_element = element.options(
-                visible=visible,
-                **self._get_color_kwarg(layer_color),
-                **shared_opts
-            )
-
-            return layer_element
-        else:
-            raise ValueError("Unsupported backend: %s" % Store.current_backend)
+        return element, visible
 
 
 class ColorListSelectionDisplay(SelectionDisplay):
@@ -346,29 +311,27 @@ class ColorListSelectionDisplay(SelectionDisplay):
             selection_exprs = exprs[1:]
             unselected_color = colors[0]
             selected_colors = colors[1:]
-            if Store.current_backend == 'plotly':
-                n = len(el.dimension_values(0))
 
-                if not any(selection_exprs):
-                    colors = [unselected_color] * n
-                else:
-                    clrs = np.array(
-                        [unselected_color] + list(selected_colors))
+            n = len(el.dimension_values(0))
 
-                    color_inds = np.zeros(n, dtype='int8')
-
-                    for i, expr, color in zip(
-                            range(1, len(clrs)),
-                            selection_exprs,
-                            selected_colors
-                    ):
-                        color_inds[expr.apply(el)] = i
-
-                    colors = clrs[color_inds]
-
-                return el.options(**{self.color_prop: colors})
+            if not any(selection_exprs):
+                colors = [unselected_color] * n
             else:
-                return el
+                clrs = np.array(
+                    [unselected_color] + list(selected_colors))
+
+                color_inds = np.zeros(n, dtype='int8')
+
+                for i, expr, color in zip(
+                        range(1, len(clrs)),
+                        selection_exprs,
+                        selected_colors
+                ):
+                    color_inds[expr.apply(el)] = i
+
+                colors = clrs[color_inds]
+
+            return el.options(**{self.color_prop: colors})
 
         dmap = Dynamic(
             element,

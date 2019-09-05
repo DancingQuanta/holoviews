@@ -8,7 +8,7 @@ import numpy as np
 
 from bokeh.models import FactorRange, Circle, VBar, HBar
 
-from holoviews.operation.selections import OverlaySelectionDisplay
+from .selection import BokehOverlaySelectionDisplay
 from ...core.dimension import Dimension, Dimensioned
 from ...core.ndmapping import sorted_context
 from ...core.util import (basestring, dimension_sanitizer, wrap_tuple,
@@ -35,7 +35,7 @@ class DistributionPlot(AreaPlot):
     filled = param.Boolean(default=True, doc="""
         Whether the bivariate contours should be filled.""")
 
-    selection_display = OverlaySelectionDisplay()
+    selection_display = BokehOverlaySelectionDisplay()
 
 
 class BivariatePlot(PolygonPlot):
@@ -58,7 +58,7 @@ class BivariatePlot(PolygonPlot):
     levels = param.ClassSelector(default=10, class_=(list, int), doc="""
         A list of scalar values used to specify the contour levels.""")
 
-    selection_display = OverlaySelectionDisplay(color_prop='cmap', is_cmap=True)
+    selection_display = BokehOverlaySelectionDisplay(color_prop='cmap', is_cmap=True)
 
 
 class BoxWhiskerPlot(CompositeElementPlot, ColorbarPlot, LegendPlot):
@@ -87,7 +87,7 @@ class BoxWhiskerPlot(CompositeElementPlot, ColorbarPlot, LegendPlot):
 
     _stream_data = False # Plot does not support streaming data
 
-    selection_display = OverlaySelectionDisplay()
+    selection_display = BokehOverlaySelectionDisplay()
 
     def get_extents(self, element, ranges, range_type='combined'):
         return super(BoxWhiskerPlot, self).get_extents(
@@ -337,7 +337,7 @@ class ViolinPlot(BoxWhiskerPlot):
 
     _stat_fns = [partial(np.percentile, q=q) for q in [25, 50, 75]]
 
-    selection_display = OverlaySelectionDisplay(color_prop='violin_fill_color')
+    selection_display = BokehOverlaySelectionDisplay(color_prop='violin_fill_color')
 
     def _kde_data(self, el, key, **kwargs):
         vdim = el.vdims[0]

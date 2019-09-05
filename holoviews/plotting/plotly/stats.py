@@ -2,7 +2,7 @@ from __future__ import absolute_import, division, unicode_literals
 
 import param
 
-from holoviews.operation.selections import OverlaySelectionDisplay
+from .selection import PlotlyOverlaySelectionDisplay
 from .chart import ChartPlot
 from .element import ElementPlot, ColorbarPlot
 
@@ -19,7 +19,7 @@ class BivariatePlot(ChartPlot, ColorbarPlot):
 
     _style_key = 'contours'
 
-    selection_display = OverlaySelectionDisplay()
+    selection_display = PlotlyOverlaySelectionDisplay()
 
     def graph_options(self, element, ranges, style):
         opts = super(BivariatePlot, self).graph_options(element, ranges, style)
@@ -70,7 +70,7 @@ class DistributionPlot(ElementPlot):
 
     _style_key = 'line'
 
-    selection_display = OverlaySelectionDisplay()
+    selection_display = PlotlyOverlaySelectionDisplay()
 
 
 class MultiDistributionPlot(ElementPlot):
@@ -126,7 +126,7 @@ class BoxWhiskerPlot(MultiDistributionPlot):
 
     _style_key = 'marker'
 
-    selection_display = OverlaySelectionDisplay()
+    selection_display = PlotlyOverlaySelectionDisplay()
 
     def graph_options(self, element, ranges, style):
         options = super(BoxWhiskerPlot, self).graph_options(element, ranges, style)
