@@ -6,6 +6,7 @@ import numpy as np
 from plotly import colors
 from plotly.figure_factory._trisurf import trisurf as trisurface
 
+from holoviews.operation.selections import OverlaySelectionDisplay
 from ...core.options import SkipRendering
 from .element import ElementPlot, ColorbarPlot
 from .chart import ScatterPlot, CurvePlot
@@ -61,6 +62,8 @@ class Scatter3DPlot(Chart3DPlot, ScatterPlot):
     style_opts = [
         'visible', 'marker', 'color', 'cmap', 'alpha', 'opacity', 'size', 'sizemin'
     ]
+
+    selection_display = OverlaySelectionDisplay()
 
 
 class Path3DPlot(Chart3DPlot, CurvePlot):

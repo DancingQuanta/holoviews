@@ -8,6 +8,7 @@ from bokeh.models import CategoricalColorMapper, CustomJS, Whisker, Range1d
 from bokeh.models.tools import BoxSelectTool
 from bokeh.transform import jitter
 
+from holoviews.operation.selections import OverlaySelectionDisplay
 from ...core.data import Dataset
 from ...core.dimension import dimension_name
 from ...core.util import (
@@ -57,6 +58,8 @@ class PointPlot(LegendPlot, ColorbarPlot):
 
     _plot_methods = dict(single='scatter', batched='scatter')
     _batched_style_opts = line_properties + fill_properties + ['size', 'marker', 'angle']
+
+    selection_display = OverlaySelectionDisplay()
 
     def _get_size_data(self, element, ranges, style):
         data, mapping = {}, {}
@@ -129,7 +132,7 @@ class PointPlot(LegendPlot, ColorbarPlot):
 
         # Angles need special handling since they are tied to the
         # marker in certain cases
-        has_angles = False 
+        has_angles = False
         for (key, el), zorder in zip(element.data.items(), zorders):
             self.param.set_param(**self.lookup_options(el, 'plot').options)
             style = self.lookup_options(element.last, 'style')
@@ -396,6 +399,8 @@ class HistogramPlot(ColorbarPlot):
 
     _nonvectorized_styles = ['line_dash']
 
+    selection_display = OverlaySelectionDisplay()
+
     def get_data(self, element, ranges, style):
         if self.invert_axes:
             mapping = dict(top='right', bottom='left', left=0, right='top')
@@ -504,6 +509,8 @@ class ErrorPlot(ColorbarPlot):
     _mapping = dict(base="base", upper="upper", lower="lower")
 
     _plot_methods = dict(single=Whisker)
+
+    selection_display = OverlaySelectionDisplay()
 
     def get_data(self, element, ranges, style):
         mapping = dict(self._mapping)
@@ -663,6 +670,8 @@ class SpikesPlot(ColorbarPlot):
 
     _plot_methods = dict(single='segment')
 
+    selection_display = OverlaySelectionDisplay()
+
     def get_extents(self, element, ranges, range_type='combined'):
         if len(element.dimensions()) > 1:
             ydim = element.get_dimension(1)
@@ -775,6 +784,8 @@ class BarPlot(ColorbarPlot, LegendPlot):
 
     # Declare that y-range should auto-range if not bounded
     _y_range_type = Range1d
+
+    selection_display = OverlaySelectionDisplay()
 
     def get_extents(self, element, ranges, range_type='combined'):
         """

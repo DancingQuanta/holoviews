@@ -151,5 +151,3 @@ class Table(Dataset, Tabular):
 
     group = param.String(default='Table', constant=True, doc="""
          The group is used to describe the Table.""")
-
-    _selection_display_mode = 'color_list'

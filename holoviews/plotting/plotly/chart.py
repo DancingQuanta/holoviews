@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, unicode_literals
 import param
 import numpy as np
 
+from holoviews.operation.selections import OverlaySelectionDisplay
 from ...core.data import Dataset
 from ...core import util
 from ...element import Bars
@@ -36,6 +37,8 @@ class ScatterPlot(ChartPlot, ColorbarPlot):
     trace_kwargs = {'type': 'scatter', 'mode': 'markers'}
 
     _style_key = 'marker'
+
+    selection_display = OverlaySelectionDisplay()
 
     def graph_options(self, element, ranges, style):
         opts = super(ScatterPlot, self).graph_options(element, ranges, style)
@@ -141,6 +144,8 @@ class ErrorBarsPlot(ChartPlot, ColorbarPlot):
 
     _style_key = 'error_y'
 
+    selection_display = OverlaySelectionDisplay()
+
     def get_data(self, element, ranges, style):
         x, y = ('y', 'x') if self.invert_axes else ('x', 'y')
         neg_error = element.dimension_values(2)
@@ -177,6 +182,8 @@ class BarPlot(ElementPlot):
     stacked = param.Boolean(default=False)
 
     trace_kwargs = {'type': 'bar'}
+
+    selection_display = OverlaySelectionDisplay()
 
     def get_extents(self, element, ranges, range_type='combined'):
         """
@@ -292,6 +299,8 @@ class HistogramPlot(ElementPlot):
     ]
 
     _style_key = 'marker'
+
+    selection_display = OverlaySelectionDisplay()
 
     def get_data(self, element, ranges, style):
         xdim = element.kdims[0]

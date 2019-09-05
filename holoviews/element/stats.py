@@ -20,8 +20,6 @@ class StatisticsElement(Dataset, Element2D):
     # Ensure Interface does not add an index
     _auto_indexable_1d = False
 
-    _selection_display_mode = 'overlay'
-
     def __init__(self, data, kdims=None, vdims=None, **params):
         if (isinstance(data, Element) and
                 data.interface.datatype != "dataframe"):
@@ -196,8 +194,6 @@ class BoxWhisker(Dataset, Element2D):
     kdims = param.List(default=[], bounds=(0,None))
 
     vdims = param.List(default=[Dimension('y')], bounds=(1,1))
-
-    _selection_display_mode = 'overlay'
 
 
 class Violin(BoxWhisker):

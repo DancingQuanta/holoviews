@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, unicode_literals
 
 import param
 
+from holoviews.operation.selections import ColorListSelectionDisplay
 from .element import ElementPlot
 
 
@@ -13,9 +14,11 @@ class TablePlot(ElementPlot):
 
     trace_kwargs = {'type': 'table'}
 
-    style_opts = ['line_color', 'color', 'align', 'font', 'cell_height']
+    style_opts = ['line', 'fill', 'align', 'font', 'cell_height']
 
     _style_key = 'cells'
+
+    selection_display = ColorListSelectionDisplay(color_prop='fill')
 
     def get_data(self, element, ranges, style):
         header = dict(values=[d.pprint_label for d in element.dimensions()])
@@ -28,11 +31,11 @@ class TablePlot(ElementPlot):
         opts = super(TablePlot, self).graph_options(element, ranges, style)
 
         # Transpose fill_color array so values apply by rows not column
-        if 'color' in opts.get('cells', {}):
-            opts['cells']['fill_color'] = [opts['cells'].pop('color')]
+        if 'fill' in opts.get('cells', {}):
+            opts['cells']['fill_color'] = [opts['cells'].pop('fill')]
 
-        if 'line_color' in opts.get('cells', {}):
-            opts['cells']['line_color'] = [opts['cells']['line_color']]
+        if 'line' in opts.get('cells', {}):
+            opts['cells']['line_color'] = [opts['cells']['line']]
 
         return opts
 

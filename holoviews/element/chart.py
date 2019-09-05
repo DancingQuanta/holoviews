@@ -101,7 +101,6 @@ class Scatter(Chart2dSelectionExpr, Chart):
 
     group = param.String(default='Scatter', constant=True)
 
-    _selection_display_mode = 'overlay'
 
 class Curve(Chart2dSelectionExpr, Chart):
     """
@@ -127,8 +126,6 @@ class ErrorBars(Chart2dSelectionExpr, Chart):
 
     vdims = param.List(default=[Dimension('y'), Dimension('yerror')],
                        bounds=(1, None), constant=True)
-
-    _selection_display_mode = 'overlay'
 
     def range(self, dim, data_range=True, dimension_range=True):
         """Return the lower and upper bounds of values along dimension.
@@ -214,8 +211,6 @@ class Histogram(Chart):
     _binned = True
 
     _selection_streams = (BoundsXY,)
-
-    _selection_display_mode = 'overlay'
 
     def __init__(self, data, edges=None, **params):
         if data is None:
@@ -414,7 +409,6 @@ class Spikes(Chart2dSelectionExpr, Chart):
 
     _auto_indexable_1d = False
 
-    _selection_display_mode = 'overlay'
 
 class Area(Curve):
     """

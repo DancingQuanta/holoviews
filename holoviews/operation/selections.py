@@ -98,7 +98,8 @@ class _base_link_selections(param.ParameterizedFunction):
             # Register element to receive selection expression callbacks
             self._register_element(element)
 
-            return _build_selection_dmap(
+            chart = Store.registry[Store.current_backend][type(element)]
+            return chart.selection_display.build_selection(
                 self._selection_streams, element, operations
             )
 
@@ -128,7 +129,7 @@ class _base_link_selections(param.ParameterizedFunction):
         if _build_op_color_kwargs(op, 'dummy'):
             return Dynamic(hvobj,
                            operation=_color_op_fn,
-                           streams=[self._colors_stream])
+                           streams=[self._selection_streams.colors_stream])
         else:
             return op(hvobj)
 
@@ -138,23 +139,6 @@ class _base_link_selections(param.ParameterizedFunction):
     @classmethod
     def _build_selection_streams(cls, inst):
         raise NotImplementedError()
-
-    # Will go away...
-    @property
-    def _colors_stream(self):
-        return self._selection_streams.colors_stream
-
-    @property
-    def _exprs_stream(self):
-        return self._selection_streams.exprs_stream
-
-    @property
-    def _cmap_streams(self):
-        return self._selection_streams.cmap_streams
-
-    @property
-    def _alpha_streams(self):
-        return self._selection_streams.alpha_streams
 
 
 class link_selections(_base_link_selections):
@@ -236,106 +220,168 @@ class link_selections(_base_link_selections):
             self.selection_expr = selection_expr
 
 
-def _build_selection_dmap(selection_streams, element, operations):
-    # Build appropriate selection callback for element type
-    if element._selection_display_mode == 'overlay':
-        # return element/dynamic map?
-        return _build_overlay_selection(
-            selection_streams, element, operations
-        )
-    elif element._selection_display_mode == 'color_list':
-        return _build_colorlist_selection(
-            selection_streams, element, operations
-        )
-    else:
-        # Unsupported element
+class SelectionDisplay(object):
+    def build_selection(self, selection_streams, element, operations):
+        raise NotImplementedError()
+
+
+class NoOpSelectionDisplay(SelectionDisplay):
+    def build_selection(self, selection_streams, element, operations):
         return element
 
 
-def _build_overlay_selection(selection_streams, element, operations=()):
-    layers = []
-    num_layers = len(selection_streams.colors_stream.colors)
-    if not num_layers:
-        return Overlay(items=[])
+class OverlaySelectionDisplay(SelectionDisplay):
+    def __init__(self, color_prop='color', is_cmap=False):
+        self.color_prop = color_prop
+        self.is_cmap = is_cmap
 
-    for layer_number in range(num_layers):
-        layers.append(
-            Dynamic(
-                element,
-                operation=_build_layer_callback(layer_number),
-                streams=[selection_streams.colors_stream, selection_streams.exprs_stream]
+    def _get_color_kwarg(self, color):
+        return {self.color_prop: [color] if self.is_cmap else color}
+
+    def build_selection(self, selection_streams, element, operations):
+        layers = []
+        num_layers = len(selection_streams.colors_stream.colors)
+        if not num_layers:
+            return Overlay(items=[])
+
+        for layer_number in range(num_layers):
+            layers.append(
+                Dynamic(
+                    element,
+                    operation=self._build_layer_callback(layer_number),
+                    streams=[selection_streams.colors_stream,
+                             selection_streams.exprs_stream]
+                )
             )
+
+        # Wrap in operations
+        import copy
+        for op in operations:
+            for layer_number in range(num_layers):
+                streams = copy.copy(op.streams)
+
+                if 'cmap' in op.param:
+                    streams += [selection_streams.cmap_streams[layer_number]]
+
+                if 'alpha' in op.param:
+                    streams += [selection_streams.alpha_streams[layer_number]]
+
+                new_op = op.instance(streams=streams)
+                layers[layer_number] = new_op(layers[layer_number])
+
+        # build overlay
+        result = layers[0]
+        for layer in layers[1:]:
+            result *= layer
+        return result
+
+    def _build_layer_callback(self, layer_number):
+        def _build_layer(element, colors, exprs, **_):
+            layer_element = self._build_element_layer(
+                element, colors[layer_number], exprs[layer_number]
+            )
+
+            return layer_element
+
+        return _build_layer
+
+    def _build_element_layer(
+            self, element, layer_color, selection_expr=True
+    ):
+        from ..util.transform import dim
+        if isinstance(selection_expr, dim):
+            element = element.select(selection_expr=selection_expr)
+            visible = True
+        else:
+            visible = bool(selection_expr)
+
+        if Store.current_backend == 'bokeh':
+            backend_options = Store.options(backend='bokeh')
+            style_options = backend_options[(type(element).name,)]['style']
+
+            def alpha_opts(alpha):
+                options = dict()
+
+                for opt_name in style_options.allowed_keywords:
+                    if 'alpha' in opt_name:
+                        options[opt_name] = alpha
+
+                return options
+
+            layer_alpha = 1.0 if visible else 0.0
+            layer_element = element.options(
+                **self._get_color_kwarg(layer_color),
+                **alpha_opts(layer_alpha)
+            )
+
+            return layer_element
+
+        elif Store.current_backend == 'plotly':
+            backend_options = Store.options(backend='plotly')
+            style_options = backend_options[(type(element).name,)]['style']
+
+            if 'selectedpoints' in style_options.allowed_keywords:
+                shared_opts = dict(selectedpoints=False)
+            else:
+                shared_opts = dict()
+
+            layer_element = element.options(
+                visible=visible,
+                **self._get_color_kwarg(layer_color),
+                **shared_opts
+            )
+
+            return layer_element
+        else:
+            raise ValueError("Unsupported backend: %s" % Store.current_backend)
+
+
+class ColorListSelectionDisplay(SelectionDisplay):
+    def __init__(self, color_prop='color'):
+        self.color_prop = color_prop
+
+    def build_selection(self, selection_streams, element, operations):
+        def _build_selection(el, colors, exprs, **_):
+
+            selection_exprs = exprs[1:]
+            unselected_color = colors[0]
+            selected_colors = colors[1:]
+            if Store.current_backend == 'plotly':
+                n = len(el.dimension_values(0))
+
+                if not any(selection_exprs):
+                    colors = [unselected_color] * n
+                else:
+                    clrs = np.array(
+                        [unselected_color] + list(selected_colors))
+
+                    color_inds = np.zeros(n, dtype='int8')
+
+                    for i, expr, color in zip(
+                            range(1, len(clrs)),
+                            selection_exprs,
+                            selected_colors
+                    ):
+                        color_inds[expr.apply(el)] = i
+
+                    colors = clrs[color_inds]
+
+                return el.options(**{self.color_prop: colors})
+            else:
+                return el
+
+        dmap = Dynamic(
+            element,
+            operation=_build_selection,
+            streams=[selection_streams.colors_stream,
+                     selection_streams.exprs_stream]
         )
 
-    # Wrap in operations
-    import copy
-    for op in operations:
-        for layer_number in range(num_layers):
-            streams = copy.copy(op.streams)
+        # Apply operations
+        for op in operations:
+            dmap = op(dmap)
 
-            if 'cmap' in op.param:
-                streams += [selection_streams.cmap_streams[layer_number]]
-
-            if 'alpha' in op.param:
-                streams += [selection_streams.alpha_streams[layer_number]]
-
-            new_op = op.instance(streams=streams)
-            layers[layer_number] = new_op(layers[layer_number])
-
-    # build overlay
-    result = layers[0]
-    for layer in layers[1:]:
-        result *= layer
-    return result
-
-
-def _build_colorlist_selection(selection_streams, element, operations=()):
-    """
-    Build selections on an element by overlaying subsets of the element
-    on top of itself
-    """
-
-    def _build_selection(el, colors, exprs, **_):
-
-        selection_exprs = exprs[1:]
-        unselected_color = colors[0]
-        selected_colors = colors[1:]
-        if Store.current_backend == 'plotly':
-            n = len(el.dimension_values(0))
-
-            if not any(selection_exprs):
-                colors = [unselected_color] * n
-                return el.options(color=colors)
-            else:
-                clrs = np.array(
-                    [unselected_color] + list(selected_colors))
-
-                color_inds = np.zeros(n, dtype='int8')
-
-                for i, expr, color in zip(
-                        range(1, len(clrs)),
-                        selection_exprs,
-                        selected_colors
-                ):
-                    color_inds[expr.apply(el)] = i
-
-                colors = clrs[color_inds]
-
-                return el.options(color=colors)
-        else:
-            return el
-
-    dmap = Dynamic(
-        element,
-        operation=_build_selection,
-        streams=[selection_streams.colors_stream, selection_streams.exprs_stream]
-    )
-
-    # Apply operations
-    for op in operations:
-        dmap = op(dmap)
-
-    return dmap
+        return dmap
 
 
 def _color_to_cmap(color):
@@ -361,76 +407,3 @@ def _build_op_color_kwargs(op, color):
             kwargs['color'] = color
 
     return kwargs
-
-
-def _get_color_property(element, color):
-    element_name = type(element).name
-    if Store.current_backend == 'bokeh':
-        if element_name == 'Violin':
-            return {"violin_fill_color": color}
-        elif element_name == 'Bivariate':
-            return {"cmap": [color]}
-
-    return {"color": color}
-
-
-def _build_layer_callback(layer_number):
-    def _build_layer(element, colors, exprs, **_):
-        layer_element = _build_element_layer(
-            element, colors[layer_number], exprs[layer_number]
-        )
-
-        return layer_element
-
-    return _build_layer
-
-
-def _build_element_layer(
-        element, layer_color, selection_expr=True
-):
-    from ..util.transform import dim
-    if isinstance(selection_expr, dim):
-        element = element.select(selection_expr=selection_expr)
-        visible = True
-    else:
-        visible = bool(selection_expr)
-
-    if Store.current_backend == 'bokeh':
-        backend_options = Store.options(backend='bokeh')
-        style_options = backend_options[(type(element).name,)]['style']
-
-        def alpha_opts(alpha):
-            options = dict()
-
-            for opt_name in style_options.allowed_keywords:
-                if 'alpha' in opt_name:
-                    options[opt_name] = alpha
-
-            return options
-
-        layer_alpha = 1.0 if visible else 0.0
-        layer_element = element.options(
-            **_get_color_property(element, layer_color),
-            **alpha_opts(layer_alpha)
-        )
-
-        return layer_element
-
-    elif Store.current_backend == 'plotly':
-        backend_options = Store.options(backend='plotly')
-        style_options = backend_options[(type(element).name,)]['style']
-
-        if 'selectedpoints' in style_options.allowed_keywords:
-            shared_opts = dict(selectedpoints=False)
-        else:
-            shared_opts = dict()
-
-        layer_element = element.options(
-            visible=visible,
-            **_get_color_property(element, layer_color),
-            **shared_opts
-        )
-
-        return layer_element
-    else:
-        raise ValueError("Unsupported backend: %s" % Store.current_backend)

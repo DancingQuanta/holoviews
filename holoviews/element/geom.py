@@ -77,8 +77,6 @@ class Points(GeometrySelectionExpr, Geometry):
 
     _auto_indexable_1d = True
 
-    _selection_display_mode = 'overlay'
-
 
 class VectorField(GeometrySelectionExpr, Geometry):
     """
@@ -93,5 +91,3 @@ class VectorField(GeometrySelectionExpr, Geometry):
 
     vdims = param.List(default=[Dimension('Angle', cyclic=True, range=(0,2*np.pi)),
                                 Dimension('Magnitude')], bounds=(1, None))
-
-    _selection_display_mode = None
