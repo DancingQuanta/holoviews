@@ -1039,7 +1039,7 @@ class OverlayPlot(LegendPlot, GenericOverlayPlot):
                                       [lambda p: 'artist' in p.handles])
             if isinstance(overlay, NdOverlay):
                 key = (dim.pprint_value(k) for k, dim in zip(key, dimensions))
-                label = ','.join([str(k) + dim.unit if dim.unit else str(k) for dim, k in
+                label = ','.join([str(k) + ' ' + dim.unit if dim.unit else str(k) for dim, k in
                                   zip(dimensions, key)])
                 if handle:
                     legend_data.append((handle, label))
