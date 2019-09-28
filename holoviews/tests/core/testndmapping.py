@@ -27,6 +27,8 @@ class DimensionTest(ComparisonTestCase):
         dim = Dimension('Test dimension', cyclic=True, type=float, unit='Twilight zones')
         self.assertEqual(dim.pprint_value_string(3.23451), 'Test dimension: 3.2345 Twilight zones')
         self.assertEqual(dim.pprint_value_string(4.23441),  'Test dimension: 4.2344 Twilight zones')
+        self.assertEqual(dim.pprint_value_unit(3.23451), '3.2345 Twilight zones')
+        self.assertEqual(dim.pprint_value_unit(4.23441),  '4.2344 Twilight zones')
 
 
 class NdIndexableMappingTest(ComparisonTestCase):

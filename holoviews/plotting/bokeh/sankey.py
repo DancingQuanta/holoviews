@@ -153,13 +153,11 @@ class SankeyPlot(GraphPlot):
             else:
                 label = ''
             if self.show_values:
-                value = value_dim.pprint_value(node['value'])
+                value = value_dim.pprint_value_unit(node['value'])
                 if label:
                     label = '%s - %s' % (label, value)
                 else:
                     label = value
-            if value_dim.unit:
-                label += ' %s' % value_dim.unit
             if label:
                 text_labels.append(label)
 

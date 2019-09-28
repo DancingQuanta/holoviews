@@ -1094,7 +1094,7 @@ class ElementPlot(BokehPlot, GenericElementPlot):
         properties = dict(style, source=source)
         if self.show_legend:
             if self.overlay_dims:
-                legend = ', '.join([d.pprint_value(v) for d, v in
+                legend = ', '.join([d.pprint_value_unit(v) for d, v in
                                     self.overlay_dims.items()])
             else:
                 legend = element.label
