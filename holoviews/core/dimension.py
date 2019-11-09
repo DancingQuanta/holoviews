@@ -421,8 +421,21 @@ class Dimension(param.Parameterized):
                     return formatter % value
         return unicode(bytes_to_unicode(value))
 
-    def pprint_value_string(self, value):
+    def pprint_value_unit(self, value):
         """Pretty print the dimension value and unit.
+
+        Args:
+            value: Dimension value to format
+
+        Returns:
+            Dimension value string with unit string
+        """
+        unit = '' if self.unit is None else ' ' + bytes_to_unicode(self.unit)
+        value = self.pprint_value(value)
+        return value + unit
+
+    def pprint_value_string(self, value):
+        """Pretty print the dimension value and unit with title_format
 
         Args:
             value: Dimension value to format
